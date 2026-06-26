@@ -28,7 +28,10 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v2.0.2** - *Hotfix: Sincronización Fantasma Offline (Actual)*
+#### **v2.0.3** - *Fusión de Teléfonos en Sincronización (Actual)*
+- La ruta de sincronización ahora aprovecha el formato `JSONB` del campo teléfono. En lugar de sobrescribir el teléfono de NeonDB con el teléfono modificado offline, el sistema compara ambas listas y **agrega (concatena)** cualquier teléfono nuevo, preservando así múltiples números de contacto para un mismo usuario de forma segura.
+
+#### **v2.0.2** - *Hotfix: Sincronización Fantasma Offline*
 - Solucionado un error crítico arquitectónico con la evaluación perezosa (Lazy Evaluation) de las consultas de Django. Antes de este parche, al estar sin internet e intentar refrescar, Django eliminaba por error todos los datos de SQLite creyendo que la conexión existía, y luego chocaba con un error de red al intentar descargar los nuevos.
 - Ahora, el backend hace "ping" (fuerza la extracción) a la nube *antes* de tocar la base local, garantizando que tus datos offline nunca se borren.
 

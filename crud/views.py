@@ -179,7 +179,17 @@ def sync_local_to_cloud(request):
                 nube.tipo_documento = local.tipo_documento
                 nube.nombres = local.nombres
                 nube.correo = local.correo
-                nube.telefono = local.telefono
+                
+                # Combinar teléfonos (JSONB)
+                telefonos_nube = nube.telefono if isinstance(nube.telefono, list) else []
+                telefonos_locales = local.telefono if isinstance(local.telefono, list) else []
+                
+                # Agregar teléfonos locales que no estén en la nube
+                for tel in telefonos_locales:
+                    if tel not in telefonos_nube:
+                        telefonos_nube.append(tel)
+                        
+                nube.telefono = telefonos_nube
                 nube.is_synced = True
                 nube.save(using='default')
             else:
