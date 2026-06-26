@@ -28,7 +28,11 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v2.0.1** - *Hotfix: Renderizado de Usuarios Offline (Actual)*
+#### **v2.0.2** - *Hotfix: Sincronización Fantasma Offline (Actual)*
+- Solucionado un error crítico arquitectónico con la evaluación perezosa (Lazy Evaluation) de las consultas de Django. Antes de este parche, al estar sin internet e intentar refrescar, Django eliminaba por error todos los datos de SQLite creyendo que la conexión existía, y luego chocaba con un error de red al intentar descargar los nuevos.
+- Ahora, el backend hace "ping" (fuerza la extracción) a la nube *antes* de tocar la base local, garantizando que tus datos offline nunca se borren.
+
+#### **v2.0.1** - *Hotfix: Renderizado de Usuarios Offline*
 - Corregido un bug en la respuesta `GET` que causaba que los usuarios registrados offline perdieran su ID al transicionar a la interfaz de React, lo que provocaba que desaparecieran visualmente de la lista.
 - Solucionado un problema donde el número de teléfono se perdía internamente al crear un registro offline.
 

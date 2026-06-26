@@ -10,7 +10,8 @@ def persona_list_create(request):
     if request.method == 'GET':
         try:
             # 1. Intentar obtener de NeonDB (default)
-            personas_nube = Persona.objects.using('default').all()
+            # EVALUAMOS INMEDIATAMENTE con list() para que si falla el internet, salte al except ANTES de tocar SQLite
+            personas_nube = list(Persona.objects.using('default').all())
             
             # --- CONSERVACIÓN INTELIGENTE (OFFLINE CACHE) ---
             try:
@@ -20,7 +21,7 @@ def persona_list_create(request):
                 offline_locales = []
                 
             try:
-                # Borramos la data antigua local para reescribir un espejo limpio
+                # AHORA SÍ, si llegamos aquí es porque NeonDB está vivo. Borramos la data antigua local.
                 Persona.objects.using('sqlite').all().delete()
                 
                 # Preparamos las copias oficiales
@@ -193,7 +194,7 @@ def sync_local_to_cloud(request):
             sync_count += 1
                 
         # Reparamos la base local importando los IDs oficiales
-        nube_todos = Persona.objects.using('default').all()
+        nube_todos = list(Persona.objects.using('default').all())
         Persona.objects.using('sqlite').all().delete()
         copias = [
             Persona(
