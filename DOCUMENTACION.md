@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.6.0** - *Sistema de Alertas Personalizadas (Toasts) (Actual)*
+#### **v1.7.0** - *Sincronización Transaccional en Caliente (Mirroring) (Actual)*
+- Implementación de Caché de Espejo: `SQLite` ahora es un clon en tiempo real de `NeonDB`.
+- **En Lectura (GET):** Al traer los datos de la nube, se elimina la caché local y se inserta una copia fresca de todo el directorio automáticamente.
+- **En Escritura (POST/PATCH/DELETE):** Arquitectura `Write-Through`. Cada cambio exitoso en NeonDB se replica exactamente igual en `SQLite` al milisegundo. Esto garantiza que si el internet falla abruptamente, la base local jamás estará desactualizada.
+
+#### **v1.6.0** - *Sistema de Alertas Personalizadas (Toasts)*
 - Reemplazo de las aburridas alertas del navegador (`alert()`) por un sistema moderno de "Toasts" (alertas flotantes temporales) integradas nativamente en React.
 - Diseñé animaciones CSS fluidas (`slideIn` y `slideOut`) y colores contextuales: Rojo para errores (ej. DNI repetido), Verde para éxitos (ej. Usuario registrado) y Azul para informativos.
 - Las notificaciones desaparecen automáticamente en 4 segundos, mejorando la experiencia de usuario (UX) considerablemente y dándole un look súper premium.

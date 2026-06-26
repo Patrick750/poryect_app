@@ -12,8 +12,28 @@ def persona_list_create(request):
             # 1. Intentar obtener de NeonDB (default)
             personas = Persona.objects.using('default').all()
             serializer = PersonaSerializer(personas, many=True)
-            # Evaluamos la serialización. Si falla la DB, lanzará error aquí.
             data = serializer.data 
+            
+            # --- SINCRONIZACIÓN DE ESPEJO (CLOUD -> LOCAL) ---
+            try:
+                # Borramos la data antigua local
+                Persona.objects.using('sqlite').all().delete()
+                # Insertamos la copia exacta desde NeonDB (preservando IDs)
+                copias = [
+                    Persona(
+                        id=p.id,
+                        tipo_documento=p.tipo_documento,
+                        numero_documento=p.numero_documento,
+                        nombres=p.nombres,
+                        correo=p.correo,
+                        telefono=p.telefono
+                    ) for p in personas
+                ]
+                Persona.objects.using('sqlite').bulk_create(copias)
+            except Exception as sync_err:
+                print("Error sincronizando a SQLite (GET):", sync_err)
+            # --------------------------------------------------
+
             return Response(data)
         except (OperationalError, InterfaceError, Exception):
             # 2. Fallback: Obtener de SQLite
@@ -22,41 +42,36 @@ def persona_list_create(request):
             return Response(serializer.data)
     
     elif request.method == 'POST':
-        # Instanciamos el serializador sin guardarlo aún
         serializer = PersonaSerializer(data=request.data)
         if serializer.is_valid():
             try:
                 # 1. Intentar guardar en NeonDB (default)
-                # DRF's serializer.save() uses the default router, but we can't easily pass .using() to save()
-                # So we manually do it or rely on a transaction block.
-                # Since save() calls Model.save() internally, the easiest way to force the DB in a generic way
-                # is manually saving or passing the using kwarg if the model allows it. 
-                # Actually, in DRF, we can pass kwargs to save() which might not reach .using(), 
-                # but we can do it manually, or just use the model directly like before to guarantee it.
-                # However, since they asked for serializers, let's use the serializer properly.
-                
-                # We can save and then move it, or save directly if we override the Model's save() or DB Router.
-                # To be explicit and avoid DRF swallowing `.using()`, we'll extract the validated data and create it.
-                
-                # A trick in DRF is that we can't easily tell ModelSerializer to save to a specific DB unless we pass it.
-                # Let's save it directly using the serializer by temporarily manipulating the DB router, or just using the model.
-                # The safest way is using the serializer to VALIDATE, and the model to CREATE.
-                # Wait! We overridden create() in the serializer. If we just call save(), it goes to default DB.
-                # If it throws, we can't re-save the same serializer easily.
-                # Let's try it:
                 persona = serializer.save() 
-                # Si falló, irá al except. Si funcionó, respondemos.
-                return Response({'id': persona.id, 'status': 'created (NeonDB)'}, status=status.HTTP_201_CREATED)
+                
+                # --- SINCRONIZACIÓN WRITE-THROUGH (CLOUD -> LOCAL) ---
+                try:
+                    Persona.objects.using('sqlite').create(
+                        id=persona.id, # Forzamos el mismo ID que nos dio NeonDB
+                        tipo_documento=persona.tipo_documento,
+                        numero_documento=persona.numero_documento,
+                        nombres=persona.nombres,
+                        correo=persona.correo,
+                        telefono=persona.telefono
+                    )
+                except Exception as sync_err:
+                    print("Error sincronizando a SQLite (POST):", sync_err)
+                # -----------------------------------------------------
+                
+                return Response({'id': persona.id, 'status': 'created (NeonDB + Sync Local)'}, status=status.HTTP_201_CREATED)
             except (OperationalError, InterfaceError, Exception) as e:
-                # 2. Fallback: Guardar en SQLite
-                # Tenemos que instanciar el modelo nosotros mismos porque el serializador falló intentando guardar.
+                # 2. Fallback: Guardar SOLO en SQLite
                 validated_data = serializer.validated_data
                 phone = validated_data.pop('phone', None)
-                persona = Persona.objects.using('sqlite').create(**validated_data)
+                persona_local = Persona.objects.using('sqlite').create(**validated_data)
                 if phone:
-                    persona.telefono = [phone]
-                    persona.save(using='sqlite')
-                return Response({'id': persona.id, 'status': 'created (offline in SQLite)'}, status=status.HTTP_201_CREATED)
+                    persona_local.telefono = [phone]
+                    persona_local.save(using='sqlite')
+                return Response({'id': persona_local.id, 'status': 'created (offline in SQLite)'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PATCH', 'PUT', 'DELETE'])
@@ -67,23 +82,37 @@ def persona_detail(request, pk):
             persona = Persona.objects.using('default').get(pk=pk)
             serializer = PersonaSerializer(persona, data=request.data, partial=True)
             if serializer.is_valid():
-                serializer.save()
-                return Response({'id': persona.id, 'status': 'updated (NeonDB)'})
+                persona_actualizada = serializer.save()
+                
+                # --- SINCRONIZACIÓN WRITE-THROUGH (CLOUD -> LOCAL) ---
+                try:
+                    p_local = Persona.objects.using('sqlite').get(pk=pk)
+                    p_local.tipo_documento = persona_actualizada.tipo_documento
+                    p_local.numero_documento = persona_actualizada.numero_documento
+                    p_local.nombres = persona_actualizada.nombres
+                    p_local.correo = persona_actualizada.correo
+                    p_local.telefono = persona_actualizada.telefono
+                    p_local.save(using='sqlite')
+                except Exception as sync_err:
+                    print("Error sincronizando a SQLite (PATCH):", sync_err)
+                # -----------------------------------------------------
+                
+                return Response({'id': persona_actualizada.id, 'status': 'updated (NeonDB + Sync Local)'})
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except (OperationalError, InterfaceError, Exception):
             # 2. Fallback: Actualizar en SQLite
             try:
-                persona = Persona.objects.using('sqlite').get(pk=pk)
-                serializer = PersonaSerializer(persona, data=request.data, partial=True)
+                persona_local = Persona.objects.using('sqlite').get(pk=pk)
+                serializer = PersonaSerializer(persona_local, data=request.data, partial=True)
                 if serializer.is_valid():
                     validated_data = serializer.validated_data
                     phone = validated_data.pop('phone', None)
                     for attr, value in validated_data.items():
-                        setattr(persona, attr, value)
+                        setattr(persona_local, attr, value)
                     if phone:
-                        persona.telefono = [phone]
-                    persona.save(using='sqlite')
-                    return Response({'id': persona.id, 'status': 'updated (offline in SQLite)'})
+                        persona_local.telefono = [phone]
+                    persona_local.save(using='sqlite')
+                    return Response({'id': persona_local.id, 'status': 'updated (offline in SQLite)'})
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except Persona.DoesNotExist:
                 return Response({'error': 'Not found in SQLite fallback'}, status=status.HTTP_404_NOT_FOUND)
@@ -93,12 +122,20 @@ def persona_detail(request, pk):
         try:
             persona = Persona.objects.using('default').get(pk=pk)
             persona.delete(using='default')
-            return Response({'status': 'deleted (NeonDB)'}, status=status.HTTP_204_NO_CONTENT)
-        except (OperationalError, InterfaceError, Exception):
-            # 2. Fallback: Eliminar en SQLite
+            
+            # --- SINCRONIZACIÓN WRITE-THROUGH (CLOUD -> LOCAL) ---
             try:
-                persona = Persona.objects.using('sqlite').get(pk=pk)
-                persona.delete(using='sqlite')
+                Persona.objects.using('sqlite').filter(pk=pk).delete()
+            except Exception as sync_err:
+                print("Error sincronizando a SQLite (DELETE):", sync_err)
+            # -----------------------------------------------------
+            
+            return Response({'status': 'deleted (NeonDB + Sync Local)'}, status=status.HTTP_204_NO_CONTENT)
+        except (OperationalError, InterfaceError, Exception):
+            # 2. Fallback: Eliminar SOLO en SQLite
+            try:
+                persona_local = Persona.objects.using('sqlite').get(pk=pk)
+                persona_local.delete(using='sqlite')
                 return Response({'status': 'deleted (offline in SQLite)'}, status=status.HTTP_204_NO_CONTENT)
             except Persona.DoesNotExist:
                 return Response({'error': 'Not found in SQLite'}, status=status.HTTP_404_NOT_FOUND)
