@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.2.0** - *Backend Django como Proxy Offline-First (Actual)*
+#### **v1.3.0** - *Multi-Database Nativo (Actual)*
+- Integración oficial con NeonDB utilizando `psycopg2` y `dj-database-url`.
+- Django usa NeonDB de forma nativa por defecto.
+- Fallback configurado a nivel de ORM: si la consulta a NeonDB falla (`OperationalError`), Django automáticamente redirige la consulta a la base de datos `db.sqlite3` usando el sufijo `.using('sqlite')`.
+
+#### **v1.2.0** - *Backend Django como Proxy Offline-First*
 - Traslado de la lógica de conexión (NeonDB vs SQLite) al backend de Django.
 - Django actúa ahora como un proxy HTTP: si NeonDB no responde o rechaza la conexión, guarda automáticamente los datos en la base de datos `db.sqlite3` usando el modelo `Persona`.
 - Simplificación del frontend: React ahora siempre se comunica de forma transparente con `http://localhost:8000/api/personas/`.
