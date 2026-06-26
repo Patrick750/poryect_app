@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.5.0** - *Validaciones de Datos y Unicidad (Actual)*
+#### **v1.6.0** - *Sistema de Alertas Personalizadas (Toasts) (Actual)*
+- Reemplazo de las aburridas alertas del navegador (`alert()`) por un sistema moderno de "Toasts" (alertas flotantes temporales) integradas nativamente en React.
+- Diseñé animaciones CSS fluidas (`slideIn` y `slideOut`) y colores contextuales: Rojo para errores (ej. DNI repetido), Verde para éxitos (ej. Usuario registrado) y Azul para informativos.
+- Las notificaciones desaparecen automáticamente en 4 segundos, mejorando la experiencia de usuario (UX) considerablemente y dándole un look súper premium.
+
+#### **v1.5.0** - *Validaciones de Datos y Unicidad*
 - Añadida limpieza (`sanitization`) al campo número de documento para evitar guardar letras o espacios, preservando únicamente los números usando expresiones regulares (Regex).
 - Se ha incorporado la validación de unicidad en el serializador: si ya existe un usuario con el mismo número de documento en NeonDB (o SQLite en su defecto), Django rechazará la inserción y retornará un error 400.
 - El frontend (App.jsx) ahora atrapa estos errores HTTP 400 devueltos por el DRF y los muestra al usuario de manera amigable mediante una alerta, informando por qué fue rechazado.

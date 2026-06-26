@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database } from 'lucide-react';
+import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import './index.css';
 
 // Ahora el frontend siempre se conecta al BACKEND de Django
@@ -16,10 +16,28 @@ function App() {
   });
   const [editingId, setEditingId] = useState(null);
   const [serverStatus, setServerStatus] = useState('Conectando al servidor...');
+  const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+      removeToast(id);
+    }, 4000);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, hiding: true } : t));
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 300); // Wait for slideOut animation
+  };
 
   const loadData = async () => {
     try {
@@ -67,20 +85,22 @@ function App() {
           const errorData = await response.json();
           // Extraer mensajes de error del objeto JSON devuelto por DRF
           const errorMsg = Object.values(errorData).flat().join('\n');
-          alert(`Error de validación:\n${errorMsg}`);
+          addToast(errorMsg, 'error');
           return;
         }
         throw new Error('API Request Failed');
       }
 
       await loadData();
+      addToast(editingId ? '¡Usuario actualizado exitosamente!' : '¡Usuario registrado exitosamente!', 'success');
+      
+      setEditingId(null);
+      setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+      
     } catch (error) {
       console.error('Error saving to Django API', error);
-      alert('Error de conexión. Asegúrate de que el servidor Django esté corriendo.');
+      addToast('Error de conexión. Asegúrate de que el servidor Django esté corriendo.', 'error');
     }
-    
-    setEditingId(null);
-    setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
   };
 
   const handleEdit = (contact) => {
@@ -90,10 +110,16 @@ function App() {
 
   const handleDelete = async (id) => {
     try {
-      await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
-      await loadData();
+      const response = await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
+      if (response.ok) {
+        await loadData();
+        addToast('Registro eliminado', 'info');
+      } else {
+        throw new Error('Delete failed');
+      }
     } catch (error) {
       console.error('Error deleting from Django API', error);
+      addToast('No se pudo eliminar el registro', 'error');
     }
     
     if (editingId === id) {
@@ -104,6 +130,23 @@ function App() {
 
   return (
     <>
+      {/* Sistema de Toasts (Alertas) */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast ${toast.type} ${toast.hiding ? 'hiding' : ''}`}>
+            {toast.type === 'error' && <AlertCircle size={20} color="var(--danger)" />}
+            {toast.type === 'success' && <CheckCircle2 size={20} color="var(--success)" />}
+            {toast.type === 'info' && <AlertCircle size={20} color="#3b82f6" />}
+            
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>{toast.message}</p>
+            
+            <button className="toast-close" onClick={() => removeToast(toast.id)}>
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 className="title" style={{ marginBottom: 0 }}>Directorio Personal</h1>
         
