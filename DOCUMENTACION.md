@@ -1,0 +1,36 @@
+# Documentación del Proyecto: CRUD Personal
+
+Este proyecto es un sistema para gestionar información personal, que incluye una interfaz frontend en React adaptable a dispositivos móviles mediante Capacitor, y un backend basado en Django con base de datos SQLite.
+
+## Arquitectura del Proyecto
+
+El proyecto está dividido en dos partes principales:
+
+1. **Frontend (`/mi-proyecto`)**: 
+   - Desarrollado con **React** y empaquetado con **Vite**.
+   - **Capacitor** está integrado para exportar la aplicación web a una aplicación móvil nativa (Android APK).
+   - El estado del CRUD se maneja localmente por el momento.
+   - Cuenta con un diseño moderno (Glassmorphism) responsivo.
+
+2. **Backend (`/crud` y `/backend`)**:
+   - Desarrollado con **Django**.
+   - Base de datos **SQLite**.
+   - Modelo `Persona` configurado para almacenar: `tipo_documento`, `numero_documento`, `nombres`, `correo`, y `telefono`.
+   - El campo `telefono` utiliza un `JSONField` para almacenar múltiples números en formato de lista.
+
+## Versionamiento (Semantic Versioning)
+
+El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR.MENOR.PARCHE** (High.Low.Patch):
+
+- **HIGH (Mayor)**: Cambios grandes o incompatibles en la arquitectura (ej. cambiar de SQLite a PostgreSQL, o rediseño total de la app).
+- **LOW (Menor)**: Nuevas funcionalidades (ej. agregar un buscador de contactos o conectar formalmente el frontend con el backend).
+- **PATH (Parche)**: Corrección de errores y pequeños ajustes (ej. arreglar un botón que no funciona o un error tipográfico).
+
+### Historial de Versiones (Changelog)
+
+#### **v1.0.0** - *Versión Inicial* (Actual)
+- Implementación de la interfaz de usuario en React.
+- Lógica del CRUD en el estado del frontend.
+- Integración de Capacitor para Android.
+- Creación de la estructura del Backend en Django.
+- Creación y migración del modelo `Persona` (SQLite) con soporte JSONB para múltiples teléfonos.
