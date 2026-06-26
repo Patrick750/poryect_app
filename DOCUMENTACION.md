@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.0.0** - *Versión Inicial* (Actual)
+#### **v1.1.0** - *Lógica Offline-First (Actual)*
+- Integración de `localforage` (Base de datos local IndexedDB/WebSQL) simulando el comportamiento interno de SQLite para almacenar contactos sin conexión.
+- Lógica de sincronización automática: cuando la aplicación recupera la conexión a internet, envía los datos locales a la API de la nube (NeonDB).
+- Indicador visual de estado de red (Online / Offline / Sincronizando) en la interfaz principal.
+
+#### **v1.0.0** - *Versión Inicial*
 - Implementación de la interfaz de usuario en React.
 - Lógica del CRUD en el estado del frontend.
 - Integración de Capacitor para Android.
