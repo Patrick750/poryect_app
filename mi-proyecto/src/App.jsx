@@ -15,11 +15,28 @@ function App() {
     phone: '' 
   });
   const [editingId, setEditingId] = useState(null);
-  const [serverStatus, setServerStatus] = useState('Conectando al servidor...');
+  const [serverStatus, setServerStatus] = useState(navigator.onLine ? 'Conectando al servidor...' : 'Offline');
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    loadData();
+    // Detectar cambios en la conexión a internet de la PC/Móvil
+    const handleOnline = () => {
+      setServerStatus('Conectando al servidor...');
+      loadData(); // Autorecargar cuando vuelve el internet
+    };
+    const handleOffline = () => setServerStatus('Offline');
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (navigator.onLine) {
+      loadData();
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const addToast = (message, type = 'info') => {

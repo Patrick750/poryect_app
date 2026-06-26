@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.8.0** - *Sincronización Manual Local a Nube (Actual)*
+#### **v1.9.0** - *Detección de Red Dinámica (Actual)*
+- Añadida lógica nativa en React para escuchar eventos del navegador (`window.addEventListener('offline')`).
+- El indicador de servidor ahora cambia en vivo a "Offline" (color rojo) en el momento exacto en que tu dispositivo (PC/Móvil) pierde acceso a internet.
+- Cuando el internet vuelve, el indicador dice "Conectando al servidor..." y procede a recargar todos los datos automáticamente sin tener que refrescar la página.
+
+#### **v1.8.0** - *Sincronización Manual Local a Nube*
 - Añadido un botón de "Sincronizar" en la interfaz gráfica del directorio.
 - Creada la ruta `/api/personas/sync/` en Django, la cual procesa todos los registros guardados en SQLite sin conexión, busca discrepancias en NeonDB (utilizando el número de documento como clave) y sube los datos offline al servidor.
 - Notificaciones Toast implementadas para informar cuántos registros fueron sincronizados con éxito.
