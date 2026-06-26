@@ -139,3 +139,58 @@ def persona_detail(request, pk):
                 return Response({'status': 'deleted (offline in SQLite)'}, status=status.HTTP_204_NO_CONTENT)
             except Persona.DoesNotExist:
                 return Response({'error': 'Not found in SQLite'}, status=status.HTTP_404_NOT_FOUND)
+@api_view(['POST'])
+def sync_local_to_cloud(request):
+    try:
+        # Check connection to NeonDB first
+        Persona.objects.using('default').exists()
+        
+        # Obtenemos todos los registros locales
+        personas_locales = Persona.objects.using('sqlite').all()
+        
+        sync_count = 0
+        
+        for local in personas_locales:
+            # Buscamos en NeonDB por número de documento
+            nube_qs = Persona.objects.using('default').filter(numero_documento=local.numero_documento)
+            
+            if nube_qs.exists():
+                # Si existe, lo actualizamos (porque local podría estar editado offline)
+                nube = nube_qs.first()
+                nube.tipo_documento = local.tipo_documento
+                nube.nombres = local.nombres
+                nube.correo = local.correo
+                nube.telefono = local.telefono
+                nube.save(using='default')
+                sync_count += 1
+            else:
+                # Si no existe, es uno nuevo creado offline. Lo subimos.
+                Persona.objects.using('default').create(
+                    tipo_documento=local.tipo_documento,
+                    numero_documento=local.numero_documento,
+                    nombres=local.nombres,
+                    correo=local.correo,
+                    telefono=local.telefono
+                )
+                sync_count += 1
+                
+        # Una vez sincronizado, volvemos a hacer un espejo limpio (NeonDB -> SQLite) para corregir los IDs localmente
+        nube_todos = Persona.objects.using('default').all()
+        Persona.objects.using('sqlite').all().delete()
+        copias = [
+            Persona(
+                id=p.id,
+                tipo_documento=p.tipo_documento,
+                numero_documento=p.numero_documento,
+                nombres=p.nombres,
+                correo=p.correo,
+                telefono=p.telefono
+            ) for p in nube_todos
+        ]
+        Persona.objects.using('sqlite').bulk_create(copias)
+        
+        return Response({'status': 'sincronizacion exitosa', 'registros_sincronizados': sync_count}, status=status.HTTP_200_OK)
+        
+    except (OperationalError, InterfaceError, Exception) as e:
+        # Si NeonDB no responde, seguimos sin internet
+        return Response({'error': 'No se pudo conectar con la base de datos en la nube. Verifica tu internet.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

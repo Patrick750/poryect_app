@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.7.0** - *Sincronización Transaccional en Caliente (Mirroring) (Actual)*
+#### **v1.8.0** - *Sincronización Manual Local a Nube (Actual)*
+- Añadido un botón de "Sincronizar" en la interfaz gráfica del directorio.
+- Creada la ruta `/api/personas/sync/` en Django, la cual procesa todos los registros guardados en SQLite sin conexión, busca discrepancias en NeonDB (utilizando el número de documento como clave) y sube los datos offline al servidor.
+- Notificaciones Toast implementadas para informar cuántos registros fueron sincronizados con éxito.
+
+#### **v1.7.0** - *Sincronización Transaccional en Caliente (Mirroring)*
 - Implementación de Caché de Espejo: `SQLite` ahora es un clon en tiempo real de `NeonDB`.
 - **En Lectura (GET):** Al traer los datos de la nube, se elimina la caché local y se inserta una copia fresca de todo el directorio automáticamente.
 - **En Escritura (POST/PATCH/DELETE):** Arquitectura `Write-Through`. Cada cambio exitoso en NeonDB se replica exactamente igual en `SQLite` al milisegundo. Esto garantiza que si el internet falla abruptamente, la base local jamás estará desactualizada.

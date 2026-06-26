@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database, AlertCircle, CheckCircle2, X, RefreshCcw } from 'lucide-react';
 import './index.css';
 
 // Ahora el frontend siempre se conecta al BACKEND de Django
@@ -128,6 +128,24 @@ function App() {
     }
   };
 
+  const handleSync = async () => {
+    setServerStatus('Sincronizando...');
+    try {
+      const response = await fetch(`${API_URL}sync/`, { method: 'POST' });
+      if (response.ok) {
+        const data = await response.json();
+        addToast(`Sincronización exitosa. ${data.registros_sincronizados} registros procesados.`, 'success');
+        await loadData();
+      } else {
+        throw new Error('Sync failed');
+      }
+    } catch (error) {
+      console.error(error);
+      setServerStatus('Error de conexión');
+      addToast('No hay conexión con la nube. Sigue en modo offline.', 'error');
+    }
+  };
+
   return (
     <>
       {/* Sistema de Toasts (Alertas) */}
@@ -150,14 +168,29 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 className="title" style={{ marginBottom: 0 }}>Directorio Personal</h1>
         
-        {/* Indicador de Estado del Servidor */}
-        <div style={{ 
-          display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          background: serverStatus.includes('Conectado') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-          color: serverStatus.includes('Conectado') ? '#34d399' : '#f87171',
-          padding: '0.5rem 1rem', borderRadius: '2rem', fontWeight: '500'
-        }}>
-          <Database size={18} /> {serverStatus}
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          {/* Botón de Sincronización Manual */}
+          <button 
+            onClick={handleSync}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa',
+              padding: '0.5rem 1rem', borderRadius: '2rem', border: '1px solid rgba(59, 130, 246, 0.4)',
+              cursor: 'pointer', fontWeight: '500'
+            }}
+          >
+            <RefreshCcw size={18} /> Sincronizar
+          </button>
+
+          {/* Indicador de Estado del Servidor */}
+          <div style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            background: serverStatus.includes('Conectado') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+            color: serverStatus.includes('Conectado') ? '#34d399' : '#f87171',
+            padding: '0.5rem 1rem', borderRadius: '2rem', fontWeight: '500'
+          }}>
+            <Database size={18} /> {serverStatus}
+          </div>
         </div>
       </div>
       
