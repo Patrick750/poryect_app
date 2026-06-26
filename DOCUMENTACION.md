@@ -28,7 +28,13 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.3.0** - *Multi-Database Nativo (Actual)*
+#### **v1.4.0** - *Refactorización con Serializadores DRF (Actual)*
+- Implementación de Django REST Framework (DRF).
+- Creación de `PersonaSerializer` para validar, limpiar y mapear la data entrante y saliente, separando limpiamente la capa de red del frontend con la base de datos.
+- Las vistas ahora usan el decorador `@api_view`, devolviendo respuestas estándar de API.
+- Se mantiene 100% intacta la lógica inteligente de fallo (NeonDB -> SQLite) dentro de la arquitectura DRF.
+
+#### **v1.3.0** - *Multi-Database Nativo*
 - Integración oficial con NeonDB utilizando `psycopg2` y `dj-database-url`.
 - Django usa NeonDB de forma nativa por defecto.
 - Fallback configurado a nivel de ORM: si la consulta a NeonDB falla (`OperationalError`), Django automáticamente redirige la consulta a la base de datos `db.sqlite3` usando el sufijo `.using('sqlite')`.
