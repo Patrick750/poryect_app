@@ -1,5 +1,7 @@
 from django.urls import path
+from . import views
 
 urlpatterns = [
-    # TODO: add paths for CRUD operations
+    path('personas/', views.persona_list_create, name='persona-list-create'),
+    path('personas/<int:pk>/', views.persona_detail, name='persona-detail'),
 ]

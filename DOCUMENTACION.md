@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.1.0** - *Lógica Offline-First (Actual)*
+#### **v1.2.0** - *Backend Django como Proxy Offline-First (Actual)*
+- Traslado de la lógica de conexión (NeonDB vs SQLite) al backend de Django.
+- Django actúa ahora como un proxy HTTP: si NeonDB no responde o rechaza la conexión, guarda automáticamente los datos en la base de datos `db.sqlite3` usando el modelo `Persona`.
+- Simplificación del frontend: React ahora siempre se comunica de forma transparente con `http://localhost:8000/api/personas/`.
+
+#### **v1.1.0** - *Lógica Offline-First en Frontend*
 - Integración de `localforage` (Base de datos local IndexedDB/WebSQL) simulando el comportamiento interno de SQLite para almacenar contactos sin conexión.
 - Lógica de sincronización automática: cuando la aplicación recupera la conexión a internet, envía los datos locales a la API de la nube (NeonDB).
 - Indicador visual de estado de red (Online / Offline / Sincronizando) en la interfaz principal.

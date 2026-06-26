@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Wifi, WifiOff, RefreshCw } from 'lucide-react';
-import localforage from 'localforage';
+import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database } from 'lucide-react';
 import './index.css';
 
-const API_URL = 'https://ep-mute-bread-adwqwewu.apirest.c-2.us-east-1.aws.neon.tech/neondb/rest/v1/app';
+// Ahora el frontend siempre se conecta al BACKEND de Django
+const API_URL = 'http://localhost:8000/api/personas/';
 
 function App() {
   const [contacts, setContacts] = useState([]);
@@ -15,77 +15,25 @@ function App() {
     phone: '' 
   });
   const [editingId, setEditingId] = useState(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [serverStatus, setServerStatus] = useState('Conectando al servidor...');
 
-  // Detectar cambios de red
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      syncOfflineData();
-    };
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Carga inicial
     loadData();
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
   }, []);
 
-  // Cargar datos (Nube o Local)
   const loadData = async () => {
-    if (navigator.onLine) {
-      try {
-        const response = await fetch(API_URL);
-        if (response.ok) {
-          const data = await response.json();
-          setContacts(data);
-        }
-      } catch (error) {
-        console.error('Error fetching from API:', error);
-        loadLocalData();
-      }
-    } else {
-      loadLocalData();
-    }
-  };
-
-  const loadLocalData = async () => {
-    const localData = await localforage.getItem('offline_contacts');
-    if (localData) setContacts(localData);
-  };
-
-  // Sincronizar datos locales hacia la nube
-  const syncOfflineData = async () => {
-    setIsSyncing(true);
     try {
-      const localData = await localforage.getItem('offline_contacts');
-      if (localData && localData.length > 0) {
-        // Enviar cada registro pendiente a la nube
-        for (const contact of localData) {
-          // Si el ID es un string temporal generado localmente, lo omitimos para que la DB asigne uno
-          const { id, ...dataToSync } = contact; 
-          await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dataToSync)
-          });
-        }
-        // Limpiar base de datos local
-        await localforage.removeItem('offline_contacts');
-        // Recargar datos desde la nube
-        await loadData();
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        setContacts(data);
+        setServerStatus('Conectado a Django Proxy');
+      } else {
+        setServerStatus('Error de conexión');
       }
     } catch (error) {
-      console.error('Error syncing:', error);
-    } finally {
-      setIsSyncing(false);
+      console.error('Error fetching from Django backend:', error);
+      setServerStatus('Servidor apagado');
     }
   };
 
@@ -98,39 +46,24 @@ function App() {
     e.preventDefault();
     if (!formData.names || !formData.email || !formData.phone) return;
 
-    if (isOnline) {
-      // Guardar en la nube
-      try {
-        if (editingId) {
-          await fetch(`${API_URL}?id=eq.${editingId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-          });
-        } else {
-          await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-          });
-        }
-        await loadData();
-      } catch (error) {
-        console.error('Error saving to API', error);
-      }
-    } else {
-      // Guardar en SQLite (localforage)
-      const localData = (await localforage.getItem('offline_contacts')) || [];
+    try {
       if (editingId) {
-        const updated = localData.map(c => c.id === editingId ? { ...formData, id: editingId } : c);
-        await localforage.setItem('offline_contacts', updated);
-        setContacts(updated);
+        await fetch(`${API_URL}${editingId}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
       } else {
-        const newContact = { ...formData, id: Date.now().toString() };
-        const updated = [newContact, ...localData];
-        await localforage.setItem('offline_contacts', updated);
-        setContacts(updated);
+        await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
       }
+      await loadData();
+    } catch (error) {
+      console.error('Error saving to Django API', error);
+      alert('Asegúrate de que el servidor Django esté corriendo.');
     }
     
     setEditingId(null);
@@ -143,18 +76,11 @@ function App() {
   };
 
   const handleDelete = async (id) => {
-    if (isOnline) {
-      try {
-        await fetch(`${API_URL}?id=eq.${id}`, { method: 'DELETE' });
-        await loadData();
-      } catch (error) {
-        console.error('Error deleting from API', error);
-      }
-    } else {
-      const localData = (await localforage.getItem('offline_contacts')) || [];
-      const updated = localData.filter(c => c.id !== id);
-      await localforage.setItem('offline_contacts', updated);
-      setContacts(updated);
+    try {
+      await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting from Django API', error);
     }
     
     if (editingId === id) {
@@ -168,20 +94,14 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 className="title" style={{ marginBottom: 0 }}>Directorio Personal</h1>
         
-        {/* Indicador de Estado de Red */}
+        {/* Indicador de Estado del Servidor */}
         <div style={{ 
           display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          background: isOnline ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-          color: isOnline ? '#34d399' : '#f87171',
+          background: serverStatus.includes('Conectado') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+          color: serverStatus.includes('Conectado') ? '#34d399' : '#f87171',
           padding: '0.5rem 1rem', borderRadius: '2rem', fontWeight: '500'
         }}>
-          {isSyncing ? (
-            <><RefreshCw size={18} className="spin" /> Sincronizando...</>
-          ) : isOnline ? (
-            <><Wifi size={18} /> En Línea (NeonDB)</>
-          ) : (
-            <><WifiOff size={18} /> Sin Conexión (Modo Local)</>
-          )}
+          <Database size={18} /> {serverStatus}
         </div>
       </div>
       
