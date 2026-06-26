@@ -15,7 +15,7 @@ class PersonaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Persona
-        fields = ['id', 'documentType', 'documentNumber', 'names', 'email', 'phone', 'phone_display']
+        fields = ['id', 'documentType', 'documentNumber', 'names', 'email', 'phone', 'phone_display', 'is_synced']
 
     def validate_documentNumber(self, value):
         # Limpiar el campo: eliminar espacios, letras y todo lo que no sea dígito

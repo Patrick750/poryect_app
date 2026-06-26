@@ -292,7 +292,18 @@ function App() {
               contacts.map(contact => (
                 <div key={contact.id} className="list-item">
                   <div className="item-info">
-                    <h3>{contact.names}</h3>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {contact.names}
+                      {contact.is_synced === false && (
+                        <span style={{ 
+                          fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.2)', 
+                          color: '#f87171', padding: '0.1rem 0.4rem', 
+                          borderRadius: '1rem', fontWeight: 'bold' 
+                        }}>
+                          OFFLINE
+                        </span>
+                      )}
+                    </h3>
                     <p style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
                       <Mail size={12} /> {contact.email}
                     </p>

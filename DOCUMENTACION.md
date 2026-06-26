@@ -28,7 +28,13 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.9.0** - *Detección de Red Dinámica (Actual)*
+#### **v2.0.0** - *Conservación de Caché y Etiquetado Offline (Actual)*
+- **Migración de Base de Datos:** Añadido el campo booleano `is_synced` al modelo `Persona` en Django.
+- **Conservación Inteligente:** Al descargar datos de NeonDB, el backend ahora filtra y rescata los registros que están marcados como `is_synced=False` en SQLite, evitando que sean borrados por accidente antes de sincronizarlos.
+- **Badges Visuales:** El frontend ahora lee la propiedad `is_synced`. Si es falsa, renderiza una elegante etiqueta roja con el texto "OFFLINE" junto al nombre del contacto.
+- **Sincronización Transparente:** Al oprimir el botón "Sincronizar", los registros suben a NeonDB, adquieren `is_synced=True` y la etiqueta roja desaparece en tiempo real.
+
+#### **v1.9.0** - *Detección de Red Dinámica*
 - Añadida lógica nativa en React para escuchar eventos del navegador (`window.addEventListener('offline')`).
 - El indicador de servidor ahora cambia en vivo a "Offline" (color rojo) en el momento exacto en que tu dispositivo (PC/Móvil) pierde acceso a internet.
 - Cuando el internet vuelve, el indicador dice "Conectando al servidor..." y procede a recargar todos los datos automáticamente sin tener que refrescar la página.
