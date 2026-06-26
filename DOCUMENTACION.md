@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v2.0.3** - *Fusión de Teléfonos en Sincronización (Actual)*
+#### **v2.1.0** - *Vista Detallada de Usuario (Actual)*
+- **Componente `UserDetail`**: Añadida una vista individual inmersiva que reemplaza la pantalla principal al hacer clic en un usuario, simulando la navegación de una aplicación móvil SPA (Single Page Application).
+- **Soporte Multi-Teléfono Explotado**: El Serializer de Django ahora envía la lista completa de números telefónicos (`phones_list`). La vista detallada extrae este arreglo JSONB y renderiza dinámicamente múltiples burbujas (chips) para cada teléfono que el usuario haya acumulado en sus sincronizaciones.
+- **Micro-interacciones y UI**: Añadidas animaciones CSS fluidas (`fadeIn`), efectos hover y diseño en Glassmorphism mejorado para la vista individual.
+
+#### **v2.0.3** - *Fusión de Teléfonos en Sincronización*
 - La ruta de sincronización ahora aprovecha el formato `JSONB` del campo teléfono. En lugar de sobrescribir el teléfono de NeonDB con el teléfono modificado offline, el sistema compara ambas listas y **agrega (concatena)** cualquier teléfono nuevo, preservando así múltiples números de contacto para un mismo usuario de forma segura.
 
 #### **v2.0.2** - *Hotfix: Sincronización Fantasma Offline*

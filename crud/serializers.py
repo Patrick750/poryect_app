@@ -12,10 +12,13 @@ class PersonaSerializer(serializers.ModelSerializer):
     
     # Campo personalizado para enviar el primer teléfono al frontend
     phone_display = serializers.SerializerMethodField(method_name='get_phone_display')
+    
+    # Campo para exponer la lista original JSONB completa de teléfonos
+    phones_list = serializers.JSONField(source='telefono', read_only=True)
 
     class Meta:
         model = Persona
-        fields = ['id', 'documentType', 'documentNumber', 'names', 'email', 'phone', 'phone_display', 'is_synced']
+        fields = ['id', 'documentType', 'documentNumber', 'names', 'email', 'phone', 'phone_display', 'phones_list', 'is_synced']
 
     def validate_documentNumber(self, value):
         # Limpiar el campo: eliminar espacios, letras y todo lo que no sea dígito
