@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from .models import Persona
 
@@ -15,6 +16,32 @@ class PersonaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Persona
         fields = ['id', 'documentType', 'documentNumber', 'names', 'email', 'phone', 'phone_display']
+
+    def validate_documentNumber(self, value):
+        # Limpiar el campo: eliminar espacios, letras y todo lo que no sea dígito
+        cleaned_value = re.sub(r'\D', '', str(value))
+        
+        if not cleaned_value:
+            raise serializers.ValidationError("El número de documento debe contener dígitos válidos.")
+            
+        instance_id = self.instance.id if self.instance else None
+
+        # Validar unicidad en la base de datos principal (NeonDB)
+        try:
+            qs = Persona.objects.using('default').filter(numero_documento=cleaned_value)
+            if instance_id:
+                qs = qs.exclude(id=instance_id)
+            if qs.exists():
+                raise serializers.ValidationError("Ya existe un usuario registrado con este número de documento.")
+        except Exception:
+            # Si NeonDB falla, validar unicidad en la base de datos de respaldo (SQLite)
+            qs = Persona.objects.using('sqlite').filter(numero_documento=cleaned_value)
+            if instance_id:
+                qs = qs.exclude(id=instance_id)
+            if qs.exists():
+                raise serializers.ValidationError("Ya existe un usuario registrado con este número de documento (Local).")
+                
+        return cleaned_value
 
     def get_phone_display(self, obj):
         # El frontend espera 'phone' en el JSON de respuesta.

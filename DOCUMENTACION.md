@@ -28,7 +28,12 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v1.4.0** - *Refactorización con Serializadores DRF (Actual)*
+#### **v1.5.0** - *Validaciones de Datos y Unicidad (Actual)*
+- Añadida limpieza (`sanitization`) al campo número de documento para evitar guardar letras o espacios, preservando únicamente los números usando expresiones regulares (Regex).
+- Se ha incorporado la validación de unicidad en el serializador: si ya existe un usuario con el mismo número de documento en NeonDB (o SQLite en su defecto), Django rechazará la inserción y retornará un error 400.
+- El frontend (App.jsx) ahora atrapa estos errores HTTP 400 devueltos por el DRF y los muestra al usuario de manera amigable mediante una alerta, informando por qué fue rechazado.
+
+#### **v1.4.0** - *Refactorización con Serializadores DRF*
 - Implementación de Django REST Framework (DRF).
 - Creación de `PersonaSerializer` para validar, limpiar y mapear la data entrante y saliente, separando limpiamente la capa de red del frontend con la base de datos.
 - Las vistas ahora usan el decorador `@api_view`, devolviendo respuestas estándar de API.

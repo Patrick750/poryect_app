@@ -47,23 +47,36 @@ function App() {
     if (!formData.names || !formData.email || !formData.phone) return;
 
     try {
+      let response;
       if (editingId) {
-        await fetch(`${API_URL}${editingId}/`, {
+        response = await fetch(`${API_URL}${editingId}/`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
         });
       } else {
-        await fetch(API_URL, {
+        response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
         });
       }
+      
+      if (!response.ok) {
+        if (response.status === 400) {
+          const errorData = await response.json();
+          // Extraer mensajes de error del objeto JSON devuelto por DRF
+          const errorMsg = Object.values(errorData).flat().join('\n');
+          alert(`Error de validación:\n${errorMsg}`);
+          return;
+        }
+        throw new Error('API Request Failed');
+      }
+
       await loadData();
     } catch (error) {
       console.error('Error saving to Django API', error);
-      alert('Asegúrate de que el servidor Django esté corriendo.');
+      alert('Error de conexión. Asegúrate de que el servidor Django esté corriendo.');
     }
     
     setEditingId(null);
