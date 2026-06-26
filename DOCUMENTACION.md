@@ -28,7 +28,11 @@ El proyecto utiliza versionamiento semántico. El formato tradicional es **MAYOR
 
 ### Historial de Versiones (Changelog)
 
-#### **v2.0.0** - *Conservación de Caché y Etiquetado Offline (Actual)*
+#### **v2.0.1** - *Hotfix: Renderizado de Usuarios Offline (Actual)*
+- Corregido un bug en la respuesta `GET` que causaba que los usuarios registrados offline perdieran su ID al transicionar a la interfaz de React, lo que provocaba que desaparecieran visualmente de la lista.
+- Solucionado un problema donde el número de teléfono se perdía internamente al crear un registro offline.
+
+#### **v2.0.0** - *Conservación de Caché y Etiquetado Offline*
 - **Migración de Base de Datos:** Añadido el campo booleano `is_synced` al modelo `Persona` en Django.
 - **Conservación Inteligente:** Al descargar datos de NeonDB, el backend ahora filtra y rescata los registros que están marcados como `is_synced=False` en SQLite, evitando que sean borrados por accidente antes de sincronizarlos.
 - **Badges Visuales:** El frontend ahora lee la propiedad `is_synced`. Si es falsa, renderiza una elegante etiqueta roja con el texto "OFFLINE" junto al nombre del contacto.

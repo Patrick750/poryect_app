@@ -47,8 +47,8 @@ def persona_list_create(request):
             except Exception as sync_err:
                 print("Error en sincronización (GET):", sync_err)
             
-            # Combinamos la nube + lo local offline para mandarlo al frontend
-            todos = list(personas_nube) + offline_locales
+            # AHORA LEEMOS TODO DIRECTAMENTE DESDE SQLITE PARA QUE TENGAN SUS IDS REALES!
+            todos = Persona.objects.using('sqlite').all()
             serializer = PersonaSerializer(todos, many=True)
             return Response(serializer.data)
             
@@ -83,10 +83,14 @@ def persona_list_create(request):
                 return Response({'id': persona.id, 'status': 'created (NeonDB + Sync Local)'}, status=status.HTTP_201_CREATED)
             except (OperationalError, InterfaceError, Exception) as e:
                 # 2. Fallback: Guardar SOLO en SQLite (Marcado como no sincronizado)
-                validated_data = serializer.validated_data
-                phone = validated_data.pop('phone', None)
-                # IMPORTANTE: Guardamos is_synced=False
-                persona_local = Persona.objects.using('sqlite').create(is_synced=False, **validated_data)
+                phone = request.data.get('phone')
+                persona_local = Persona.objects.using('sqlite').create(
+                    tipo_documento=serializer.validated_data.get('tipo_documento'),
+                    numero_documento=serializer.validated_data.get('numero_documento'),
+                    nombres=serializer.validated_data.get('nombres'),
+                    correo=serializer.validated_data.get('correo'),
+                    is_synced=False
+                )
                 if phone:
                     persona_local.telefono = [phone]
                     persona_local.save(using='sqlite')
