@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database, AlertCircle, CheckCircle2, X, RefreshCcw } from 'lucide-react';
 import UserDetail from './components/UserDetail';
+import { getCachedContacts, cacheContacts, getPendingSync, addPendingOperation, clearPendingSync } from './services/db';
 import './index.css';
 
-// Ahora el frontend siempre se conecta al BACKEND de Django
-const API_URL = 'http://localhost:8000/api/personas/';
+// Usamos la variable de entorno o caemos en localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/personas/';
 
 function App() {
   const [contacts, setContacts] = useState([]);
@@ -16,7 +17,7 @@ function App() {
     phone: '' 
   });
   const [editingId, setEditingId] = useState(null);
-  const [serverStatus, setServerStatus] = useState(navigator.onLine ? 'Conectando al servidor...' : 'Offline');
+  const [serverStatus, setServerStatus] = useState(navigator.onLine ? 'Conectando al servidor...' : 'Modo Offline');
   const [toasts, setToasts] = useState([]);
   
   // Estado para la navegación de la vista detallada
@@ -27,14 +28,15 @@ function App() {
       setServerStatus('Conectando al servidor...');
       loadData();
     };
-    const handleOffline = () => setServerStatus('Offline');
+    const handleOffline = () => {
+      setServerStatus('Modo Offline');
+      loadData();
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    if (navigator.onLine) {
-      loadData();
-    }
+    loadData();
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -55,24 +57,46 @@ function App() {
 
   const loadData = async () => {
     try {
+      if (!navigator.onLine) throw new Error("Offline flag");
+      
       const response = await fetch(API_URL);
-      if (response.ok) {
-        const data = await response.json();
-        setContacts(data);
-        
-        // Si hay un usuario seleccionado, actualizamos sus datos tras cargar
-        if (selectedUser) {
-          const updatedUser = data.find(u => u.id === selectedUser.id);
-          if (updatedUser) setSelectedUser(updatedUser);
+      if (!response.ok) throw new Error("API failed");
+      
+      let serverData = await response.json();
+      
+      // Aplicar operaciones pendientes a los datos del servidor visualmente
+      const pending = await getPendingSync();
+      for (const op of pending) {
+        if (op.type === 'CREATE') {
+          serverData.push({ ...op.data, is_synced: false });
+        } else if (op.type === 'UPDATE') {
+          const idx = serverData.findIndex(c => c.id === op.data.id);
+          if (idx !== -1) serverData[idx] = { ...serverData[idx], ...op.data, is_synced: false };
+        } else if (op.type === 'DELETE') {
+          serverData = serverData.filter(c => c.id !== op.id);
         }
-        
-        setServerStatus('Conectado a Django Proxy');
-      } else {
-        setServerStatus('Error de conexión');
       }
+      
+      await cacheContacts(serverData);
+      setContacts(serverData);
+      
+      if (selectedUser) {
+        const updatedUser = serverData.find(u => u.id === selectedUser.id);
+        if (updatedUser) setSelectedUser(updatedUser);
+      }
+      
+      setServerStatus('Conectado a la Nube');
+      
     } catch (error) {
-      console.error('Error fetching:', error);
-      setServerStatus('Servidor apagado');
+      console.log('Usando datos de caché local (IndexedDB)');
+      setServerStatus('Modo Offline (Caché Local)');
+      const cached = await getCachedContacts();
+      setContacts(cached);
+      
+      if (selectedUser) {
+        const updatedUser = cached.find(u => u.id === selectedUser.id);
+        if (updatedUser) setSelectedUser(updatedUser);
+      }
     }
   };
 
@@ -86,20 +110,16 @@ function App() {
     if (!formData.names || !formData.email || !formData.phone) return;
 
     try {
-      let response;
-      if (editingId) {
-        response = await fetch(`${API_URL}${editingId}/`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        });
-      } else {
-        response = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        });
-      }
+      if (!navigator.onLine) throw new Error("Offline mode");
+
+      const url = editingId ? `${API_URL}${editingId}/` : API_URL;
+      const method = editingId ? 'PATCH' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
       
       if (!response.ok) {
         if (response.status === 400) {
@@ -112,64 +132,101 @@ function App() {
       }
 
       await loadData();
-      addToast(editingId ? '¡Usuario actualizado exitosamente!' : '¡Usuario registrado exitosamente!', 'success');
-      
-      setEditingId(null);
-      setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+      addToast(editingId ? '¡Actualizado en la nube!' : '¡Registrado en la nube!', 'success');
       
     } catch (error) {
-      console.error(error);
-      addToast('Error de conexión.', 'error');
+      // Fallback a LocalForage si no hay internet o falla el servidor
+      const operation = editingId ? 
+        { type: 'UPDATE', data: { id: editingId, ...formData } } : 
+        { type: 'CREATE', data: { ...formData } };
+        
+      await addPendingOperation(operation);
+      await loadData(); // Recargar visualmente
+      
+      addToast('Guardado localmente. Recuerda sincronizar luego.', 'info');
     }
+    
+    setEditingId(null);
+    setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
   };
 
   const handleEdit = (contact, e) => {
     if (e) e.stopPropagation();
     setFormData(contact);
     setEditingId(contact.id);
-    setSelectedUser(null); // Regresar a la pantalla de lista para editar
+    setSelectedUser(null);
   };
 
   const handleDelete = async (id, e) => {
     if (e) e.stopPropagation();
     try {
+      if (!navigator.onLine) throw new Error("Offline mode");
       const response = await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
-      if (response.ok) {
-        await loadData();
-        addToast('Registro eliminado', 'info');
-      } else {
-        throw new Error('Delete failed');
-      }
+      if (!response.ok) throw new Error('Delete failed');
+      
+      await loadData();
+      addToast('Eliminado de la nube', 'info');
     } catch (error) {
-      console.error(error);
-      addToast('No se pudo eliminar el registro', 'error');
+      await addPendingOperation({ type: 'DELETE', id });
+      await loadData();
+      addToast('Eliminado localmente. Sincroniza luego.', 'info');
     }
     
     if (editingId === id) {
       setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
       setEditingId(null);
     }
-    
     if (selectedUser && selectedUser.id === id) {
       setSelectedUser(null);
     }
   };
 
   const handleSync = async () => {
+    if (!navigator.onLine) {
+      addToast('No tienes internet para sincronizar.', 'error');
+      return;
+    }
+    
     setServerStatus('Sincronizando...');
     try {
-      const response = await fetch(`${API_URL}sync/`, { method: 'POST' });
-      if (response.ok) {
-        const data = await response.json();
-        addToast(`Sincronización exitosa. ${data.registros_sincronizados} registros procesados.`, 'success');
+      const pending = await getPendingSync();
+      if (pending.length === 0) {
+        addToast('No hay datos pendientes por sincronizar.', 'info');
         await loadData();
-      } else {
-        throw new Error('Sync failed');
+        return;
       }
+      
+      let syncedCount = 0;
+      for (const op of pending) {
+        try {
+          if (op.type === 'CREATE') {
+            const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+            await fetch(API_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
+            syncedCount++;
+          } else if (op.type === 'UPDATE') {
+            if (typeof op.data.id !== 'string' || !op.data.id.startsWith('temp_')) {
+              const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+              await fetch(`${API_URL}${op.data.id}/`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
+              syncedCount++;
+            }
+          } else if (op.type === 'DELETE') {
+            if (typeof op.id !== 'string' || !op.id.startsWith('temp_')) {
+              await fetch(`${API_URL}${op.id}/`, { method: 'DELETE' });
+              syncedCount++;
+            }
+          }
+        } catch (e) {
+          console.error("Fallo sincronizando operación:", op, e);
+        }
+      }
+      
+      await clearPendingSync();
+      addToast(`Sincronización exitosa. ${syncedCount} operaciones enviadas.`, 'success');
+      await loadData();
     } catch (error) {
       console.error(error);
-      setServerStatus('Error de conexión');
-      addToast('No hay conexión con la nube. Sigue en modo offline.', 'error');
+      setServerStatus('Error de sincronización');
+      addToast('Falló la conexión al sincronizar.', 'error');
     }
   };
 
