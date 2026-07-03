@@ -56,47 +56,69 @@ function App() {
   };
 
   const loadData = async () => {
-    try {
-      if (!navigator.onLine) throw new Error("Offline flag");
-      
-      const response = await fetch(API_URL);
-      if (!response.ok) throw new Error("API failed");
-      
-      let serverData = await response.json();
-      
-      // Aplicar operaciones pendientes a los datos del servidor visualmente
-      const pending = await getPendingSync();
-      for (const op of pending) {
-        if (op.type === 'CREATE') {
-          serverData.push({ ...op.data, is_synced: false });
-        } else if (op.type === 'UPDATE') {
-          const idx = serverData.findIndex(c => c.id === op.data.id);
-          if (idx !== -1) serverData[idx] = { ...serverData[idx], ...op.data, is_synced: false };
-        } else if (op.type === 'DELETE') {
-          serverData = serverData.filter(c => c.id !== op.id);
-        }
-      }
-      
-      await cacheContacts(serverData);
-      setContacts(serverData);
-      
-      if (selectedUser) {
-        const updatedUser = serverData.find(u => u.id === selectedUser.id);
-        if (updatedUser) setSelectedUser(updatedUser);
-      }
-      
-      setServerStatus('Conectado a la Nube');
-      
-    } catch (error) {
-      console.log('Usando datos de caché local (IndexedDB)');
-      setServerStatus('Modo Offline (Caché Local)');
-      const cached = await getCachedContacts();
+    // 1. Mostrar caché INMEDIATAMENTE (Cero esperas)
+    const cached = await getCachedContacts();
+    if (cached.length > 0) {
       setContacts(cached);
-      
       if (selectedUser) {
         const updatedUser = cached.find(u => u.id === selectedUser.id);
         if (updatedUser) setSelectedUser(updatedUser);
       }
+    }
+    
+    // 2. Disparar actualización invisible
+    if (navigator.onLine) {
+      triggerBackgroundSync();
+    }
+  };
+
+  const triggerBackgroundSync = async () => {
+    if (!navigator.onLine) return;
+    
+    try {
+      setServerStatus('Sincronizando...');
+      
+      // 1. Push pending
+      const pending = await getPendingSync();
+      if (pending.length > 0) {
+        for (const op of pending) {
+          try {
+            if (op.type === 'CREATE') {
+              const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+              await fetch(API_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
+            } else if (op.type === 'UPDATE') {
+              if (typeof op.data.id !== 'string' || !op.data.id.startsWith('temp_')) {
+                const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+                await fetch(`${API_URL}${op.data.id}/`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
+              }
+            } else if (op.type === 'DELETE') {
+              if (typeof op.id !== 'string' || !op.id.startsWith('temp_')) {
+                await fetch(`${API_URL}${op.id}/`, { method: 'DELETE' });
+              }
+            }
+          } catch (e) {
+            console.error("Fallo operación individual", e);
+          }
+        }
+        await clearPendingSync();
+      }
+      
+      // 2. Fetch fresh data
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        let serverData = await response.json();
+        await cacheContacts(serverData);
+        setContacts(serverData);
+        
+        if (selectedUser) {
+          const updatedUser = serverData.find(u => u.id === selectedUser.id);
+          if (updatedUser) setSelectedUser(updatedUser);
+        }
+        setServerStatus('Online - Sincronizado');
+      }
+    } catch (error) {
+      console.log('Error de red en background', error);
+      setServerStatus('Offline (Modo Local)');
     }
   };
 
@@ -109,45 +131,24 @@ function App() {
     e.preventDefault();
     if (!formData.names || !formData.email || !formData.phone) return;
 
-    try {
-      if (!navigator.onLine) throw new Error("Offline mode");
-
-      const url = editingId ? `${API_URL}${editingId}/` : API_URL;
-      const method = editingId ? 'PATCH' : 'POST';
+    // OFFLINE-FIRST: Guardar en memoria local instantáneamente y no hacer esperar al UI
+    const operation = editingId ? 
+      { type: 'UPDATE', data: { id: editingId, ...formData } } : 
+      { type: 'CREATE', data: { ...formData } };
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      if (!response.ok) {
-        if (response.status === 400) {
-          const errorData = await response.json();
-          const errorMsg = Object.values(errorData).flat().join('\n');
-          addToast(errorMsg, 'error');
-          return;
-        }
-        throw new Error('API Request Failed');
-      }
-
-      await loadData();
-      addToast(editingId ? '¡Actualizado en la nube!' : '¡Registrado en la nube!', 'success');
-      
-    } catch (error) {
-      // Fallback a LocalForage si no hay internet o falla el servidor
-      const operation = editingId ? 
-        { type: 'UPDATE', data: { id: editingId, ...formData } } : 
-        { type: 'CREATE', data: { ...formData } };
-        
-      await addPendingOperation(operation);
-      await loadData(); // Recargar visualmente
-      
-      addToast('Guardado localmente. Recuerda sincronizar luego.', 'info');
-    }
+    await addPendingOperation(operation);
+    
+    // Leer el caché actualizado para mostrarlo en 1ms
+    const cached = await getCachedContacts();
+    setContacts(cached);
+    
+    addToast(editingId ? '¡Registro actualizado!' : '¡Registro guardado!', 'success');
     
     setEditingId(null);
     setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+    
+    // Intentar sincronizar al servidor de forma totalmente asíncrona
+    triggerBackgroundSync();
   };
 
   const handleEdit = (contact, e) => {
@@ -159,18 +160,13 @@ function App() {
 
   const handleDelete = async (id, e) => {
     if (e) e.stopPropagation();
-    try {
-      if (!navigator.onLine) throw new Error("Offline mode");
-      const response = await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Delete failed');
-      
-      await loadData();
-      addToast('Eliminado de la nube', 'info');
-    } catch (error) {
-      await addPendingOperation({ type: 'DELETE', id });
-      await loadData();
-      addToast('Eliminado localmente. Sincroniza luego.', 'info');
-    }
+    
+    // OFFLINE-FIRST: Eliminar localmente de forma instantánea
+    await addPendingOperation({ type: 'DELETE', id });
+    const cached = await getCachedContacts();
+    setContacts(cached);
+    
+    addToast('Registro eliminado', 'info');
     
     if (editingId === id) {
       setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
@@ -179,6 +175,9 @@ function App() {
     if (selectedUser && selectedUser.id === id) {
       setSelectedUser(null);
     }
+    
+    // Intentar propagar a la nube asíncronamente
+    triggerBackgroundSync();
   };
 
   const handleSync = async () => {
@@ -187,47 +186,9 @@ function App() {
       return;
     }
     
-    setServerStatus('Sincronizando...');
-    try {
-      const pending = await getPendingSync();
-      if (pending.length === 0) {
-        addToast('No hay datos pendientes por sincronizar.', 'info');
-        await loadData();
-        return;
-      }
-      
-      let syncedCount = 0;
-      for (const op of pending) {
-        try {
-          if (op.type === 'CREATE') {
-            const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
-            await fetch(API_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
-            syncedCount++;
-          } else if (op.type === 'UPDATE') {
-            if (typeof op.data.id !== 'string' || !op.data.id.startsWith('temp_')) {
-              const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
-              await fetch(`${API_URL}${op.data.id}/`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
-              syncedCount++;
-            }
-          } else if (op.type === 'DELETE') {
-            if (typeof op.id !== 'string' || !op.id.startsWith('temp_')) {
-              await fetch(`${API_URL}${op.id}/`, { method: 'DELETE' });
-              syncedCount++;
-            }
-          }
-        } catch (e) {
-          console.error("Fallo sincronizando operación:", op, e);
-        }
-      }
-      
-      await clearPendingSync();
-      addToast(`Sincronización exitosa. ${syncedCount} operaciones enviadas.`, 'success');
-      await loadData();
-    } catch (error) {
-      console.error(error);
-      setServerStatus('Error de sincronización');
-      addToast('Falló la conexión al sincronizar.', 'error');
-    }
+    setServerStatus('Forzando sincronización...');
+    await triggerBackgroundSync();
+    addToast('Sincronización completa.', 'success');
   };
 
   return (
