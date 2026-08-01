@@ -30,7 +30,7 @@ jobs:
         -   name: Construir frontend
             uses: docker/build-push-action@v5
             with:
-                context: .
+                context: ./mi-proyecto
                 push: true
                 file: ./mi-proyecto/Dockerfile
                 tags: ${{ secrets.DOCKER_USERNAME }}/app-web-frontend:latest

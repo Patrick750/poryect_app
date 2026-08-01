@@ -23,7 +23,7 @@ services:
   frontend:
     build: 
       context: ./mi-proyecto
-      dockerfile: ./mi-proyecto/Dockerfile
+      dockerfile: Dockerfile
     container_name: app-web-frontend
     ports:
       - "8081:80"
