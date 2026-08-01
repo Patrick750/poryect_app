@@ -6,7 +6,7 @@ services:
     image: patrick190/app-backend:latest
     container_name: app-web-backend
     ports:
-      - "8000:8001"
+      - "8001:8000"
     deploy:
       resources:
         limits:
