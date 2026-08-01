@@ -43,4 +43,8 @@ jobs:
                 key: ${{ secrets.VPS_PASSWORD }}
 
                 script: |
-                    cd /app
+                    cd /poryect_app
+                    git pull origin main
+                    docker compose pull
+                    docker-compose up -d
+                    docker image prune -f
