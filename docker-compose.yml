@@ -1,0 +1,72 @@
+services:
+  backend:
+    build: 
+      context: .
+      dockerfile: backend/Dockerfile
+    image: patrick190/app-backend:latest
+    container_name: app-web-backend
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    networks:
+      - app
+    env_file:
+      - .env
+    restart: always
+
+
+  frontend:
+    build: 
+      context: ./mi-proyecto
+      dockerfile: Dockerfile
+    container_name: app-web-frontend
+    ports:
+      - "8081:80"
+    image: patrick190/app-frontend:latest
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    depends_on:
+      - backend
+    networks:
+      - app
+    restart: always
+
+  db:
+    image: postgres:15-alpine
+    container_name: db_app-nube
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - app:/var/lib/postgresql/data
+    networks:
+      - app
+    env_file:
+      - .env
+
+networks:
+  app:
+    driver: bridge
+
+volumes: 
+  app:
+
+
+    
+
+
+
+    

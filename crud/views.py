@@ -2,8 +2,28 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import OperationalError, InterfaceError
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from .models import Persona
 from .serializers import PersonaSerializer
+
+def notify_websocket_clients(action_type, data=None):
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                "personas_group",
+                {
+                    "type": "persona_update",
+                    "data": {
+                        "action": action_type,
+                        "data": data
+                    }
+                }
+            )
+    except Exception as e:
+        print("WebSocket notify error:", e)
+
 
 @api_view(['GET', 'POST'])
 def persona_list_create(request):
@@ -81,6 +101,7 @@ def persona_list_create(request):
                     )
                 except Exception:
                     pass
+                notify_websocket_clients('REFRESH')
                 return Response({'id': persona.id, 'status': 'created (NeonDB + Sync Local)'}, status=status.HTTP_201_CREATED)
             except (OperationalError, InterfaceError, Exception) as e:
                 # 2. Fallback: Guardar SOLO en SQLite (Marcado como no sincronizado)
@@ -95,6 +116,7 @@ def persona_list_create(request):
                 if phone:
                     persona_local.telefono = [phone]
                     persona_local.save(using='sqlite')
+                notify_websocket_clients('REFRESH')
                 return Response({'id': persona_local.id, 'status': 'created (offline in SQLite)'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -121,6 +143,7 @@ def persona_detail(request, pk):
                     p_local.save(using='sqlite')
                 except Exception:
                     pass
+                notify_websocket_clients('REFRESH')
                 return Response({'id': persona_actualizada.id, 'status': 'updated (NeonDB + Sync Local)'})
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except (OperationalError, InterfaceError, Exception):
@@ -138,6 +161,7 @@ def persona_detail(request, pk):
                     # Si editamos offline, lo marcamos como desincronizado
                     persona_local.is_synced = False 
                     persona_local.save(using='sqlite')
+                    notify_websocket_clients('REFRESH')
                     return Response({'id': persona_local.id, 'status': 'updated (offline in SQLite)'})
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except Persona.DoesNotExist:
@@ -152,12 +176,17 @@ def persona_detail(request, pk):
                 Persona.objects.using('sqlite').filter(numero_documento=doc_num).delete()
             except Exception:
                 pass
+            notify_websocket_clients('REFRESH')
             return Response({'status': 'deleted (NeonDB + Sync Local)'}, status=status.HTTP_204_NO_CONTENT)
         except (OperationalError, InterfaceError, Exception):
             try:
                 persona_local = Persona.objects.using('sqlite').get(pk=pk)
                 persona_local.delete(using='sqlite')
+                notify_websocket_clients('REFRESH')
                 return Response({'status': 'deleted (offline in SQLite)'}, status=status.HTTP_204_NO_CONTENT)
+            except Persona.DoesNotExist:
+                return Response({'error': 'Not found in SQLite'}, status=status.HTTP_404_NOT_FOUND)
+
             except Persona.DoesNotExist:
                 return Response({'error': 'Not found in SQLite'}, status=status.HTTP_404_NOT_FOUND)
 

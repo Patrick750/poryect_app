@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { User, Mail, Phone, CreditCard, Edit2, Trash2, UserPlus, Save, Database, AlertCircle, CheckCircle2, X, RefreshCcw } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import UserDetail from './components/UserDetail';
 import { getCachedContacts, cacheContacts, getPendingSync, addPendingOperation, clearPendingSync } from './services/db';
 import './index.css';
 
 // Usamos la variable de entorno o caemos en localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/personas/';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/personas/';
+const isNative = Capacitor.isNativePlatform();
+
+// Derivar URL de WebSocket desde API_URL
+const getWsUrl = () => {
+  const url = new URL(API_URL);
+  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${url.host}/ws/personas/`;
+};
 
 function App() {
   const [contacts, setContacts] = useState([]);
@@ -38,11 +47,46 @@ function App() {
 
     loadData();
 
+    // --- CONEXIÓN WEBSOCKET (SOLO EN WEB) ---
+    let ws = null;
+    if (!isNative) {
+      const connectWebSocket = () => {
+        try {
+          const wsUrl = getWsUrl();
+          ws = new WebSocket(wsUrl);
+
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.action === 'REFRESH') {
+              fetch(API_URL)
+                .then(res => res.json())
+                .then(data => {
+                  setContacts(data);
+                  cacheContacts(data);
+                })
+                .catch(err => console.error("Error al actualizar vía WebSocket:", err));
+            }
+          };
+
+          ws.onclose = () => {
+            // Reintentar conexión en 3 segundos si se cae el servidor
+            setTimeout(connectWebSocket, 3000);
+          };
+        } catch (e) {
+          console.error("Error al iniciar WebSocket:", e);
+        }
+      };
+
+      connectWebSocket();
+    }
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (ws) ws.close();
     };
   }, []);
+
 
   const addToast = (message, type = 'info') => {
     const id = Date.now();
@@ -210,28 +254,31 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 className="title" style={{ marginBottom: 0 }}>Directorio Personal</h1>
         
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button 
-            onClick={handleSync}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa',
-              padding: '0.5rem 1rem', borderRadius: '2rem', border: '1px solid rgba(59, 130, 246, 0.4)',
-              cursor: 'pointer', fontWeight: '500'
-            }}
-          >
-            <RefreshCcw size={18} /> Sincronizar
-          </button>
+        {isNative && (
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button 
+              onClick={handleSync}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa',
+                padding: '0.5rem 1rem', borderRadius: '2rem', border: '1px solid rgba(59, 130, 246, 0.4)',
+                cursor: 'pointer', fontWeight: '500'
+              }}
+            >
+              <RefreshCcw size={18} /> Sincronizar
+            </button>
 
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '0.5rem', 
-            background: serverStatus.includes('Conectado') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-            color: serverStatus.includes('Conectado') ? '#34d399' : '#f87171',
-            padding: '0.5rem 1rem', borderRadius: '2rem', fontWeight: '500'
-          }}>
-            <Database size={18} /> {serverStatus}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', gap: '0.5rem', 
+              background: serverStatus.includes('Conectado') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+              color: serverStatus.includes('Conectado') ? '#34d399' : '#f87171',
+              padding: '0.5rem 1rem', borderRadius: '2rem', fontWeight: '500'
+            }}>
+              <Database size={18} /> {serverStatus}
+            </div>
           </div>
-        </div>
+        )}
+
       </div>
       
       {/* NAVEGACIÓN DINÁMICA: Si hay un usuario seleccionado, mostramos UserDetail, si no, el layout regular */}
@@ -330,7 +377,7 @@ function App() {
                     <div className="item-info">
                       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {contact.names}
-                        {contact.is_synced === false && (
+                        {isNative && contact.is_synced === false && (
                           <span style={{ 
                             fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.2)', 
                             color: '#f87171', padding: '0.1rem 0.4rem', 
@@ -339,6 +386,7 @@ function App() {
                             OFFLINE
                           </span>
                         )}
+
                       </h3>
                       <p style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
                         <Mail size={12} /> {contact.email}

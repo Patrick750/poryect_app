@@ -5,10 +5,10 @@ ENV PYTHONDONTWRITEBYCODE=1
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update \ 
-    && apt-get install -y libpq-dev \ 
+    && apt-get install -y libpq-dev gcc python3-dev \ 
     && rm -rf /var/lib/apt/lists/*
 
-COPY requiremenst.txt .
+COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt 
 
@@ -16,4 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"]
