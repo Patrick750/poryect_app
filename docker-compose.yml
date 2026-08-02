@@ -59,7 +59,6 @@ services:
 networks:
   app:
     external: true
-    name: nginx-proxy-manager_default
 
 volumes: 
   app:
