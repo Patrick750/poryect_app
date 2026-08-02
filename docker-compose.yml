@@ -60,7 +60,7 @@ services:
 networks:
   app:
     external: true
-    name: nginx-proxy-manage-defaut
+    name: red_app
 
 volumes: 
   app:
