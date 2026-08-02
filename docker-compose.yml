@@ -19,7 +19,6 @@ services:
       - .env
     restart: always
 
-
   frontend:
     build: 
       context: ./mi-proyecto
@@ -60,14 +59,7 @@ services:
 networks:
   app:
     external: true
-    name: red_app
+    name: nginx-proxy-manager_default
 
 volumes: 
   app:
-
-
-    
-
-
-
-    
