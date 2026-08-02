@@ -70,7 +70,10 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = [
+    'http://app.adsoproject.dev/',
+    'https://app.adsoproject.dev/'
+]
 
 ROOT_URLCONF = 'backend.urls'
 
