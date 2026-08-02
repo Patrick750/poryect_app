@@ -5,8 +5,8 @@ services:
       dockerfile: backend/Dockerfile
     image: patrick190/app-backend:latest
     container_name: app-web-backend
-    ports:
-      - "8001:8000"
+    expose:
+      - "8000"
     deploy:
       resources:
         limits:
@@ -24,8 +24,8 @@ services:
       context: ./mi-proyecto
       dockerfile: Dockerfile
     container_name: app-web-frontend
-    ports:
-      - "8081:80"
+    expose:
+      - "80"
     image: patrick190/app-frontend:latest
     deploy:
       resources:
