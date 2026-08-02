@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-m70#va_)_%t@x8=+%1@ni$t7bbi1cr=j4@14hxzw^pu#_#l+d-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['appapi.adsoproject.dev', '163.245.192.239']
+ALLOWED_HOSTS = ['https://app.adsoproject.dev', '163.245.192.239']
 
 
 # Application definition
