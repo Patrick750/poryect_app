@@ -24,8 +24,8 @@ services:
       context: ./mi-proyecto
       dockerfile: Dockerfile
     container_name: app-web-frontend
-    expose:
-      - "80"
+    ports:
+      - "8081:80"
     image: patrick190/app-frontend:latest
     deploy:
       resources:
