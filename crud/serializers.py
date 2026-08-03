@@ -29,20 +29,12 @@ class PersonaSerializer(serializers.ModelSerializer):
             
         instance_id = self.instance.id if self.instance else None
 
-        # Validar unicidad en la base de datos principal (NeonDB)
-        try:
-            qs = Persona.objects.using('default').filter(numero_documento=cleaned_value)
-            if instance_id:
-                qs = qs.exclude(id=instance_id)
-            if qs.exists():
-                raise serializers.ValidationError("Ya existe un usuario registrado con este número de documento.")
-        except Exception:
-            # Si NeonDB falla, validar unicidad en la base de datos de respaldo (SQLite)
-            qs = Persona.objects.using('sqlite').filter(numero_documento=cleaned_value)
-            if instance_id:
-                qs = qs.exclude(id=instance_id)
-            if qs.exists():
-                raise serializers.ValidationError("Ya existe un usuario registrado con este número de documento (Local).")
+        # Validar unicidad en la base de datos (PostgreSQL)
+        qs = Persona.objects.filter(numero_documento=cleaned_value)
+        if instance_id:
+            qs = qs.exclude(id=instance_id)
+        if qs.exists():
+            raise serializers.ValidationError("Ya existe un usuario registrado con este número de documento.")
                 
         return cleaned_value
 
