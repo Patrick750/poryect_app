@@ -15,7 +15,8 @@
     "localforage": "^1.10.0",
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",

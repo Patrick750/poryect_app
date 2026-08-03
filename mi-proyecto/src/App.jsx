@@ -116,28 +116,44 @@ function App() {
   };
 
   const loadData = async () => {
-    try {
-      setServerStatus(isNative ? 'Cargando datos locales (SQLite)...' : 'Cargando datos de servidor...');
-      const response = await fetch(API_URL);
-      if (response.ok) {
-        const data = await response.json();
-        setContacts(data);
+    if (isNative) {
+      // --- APP MÓVIL (EMPAQUETADA) ---
+      // 1. Cargar lo que hay localmente en IndexedDB
+      const cached = await getCachedContacts();
+      if (cached.length > 0) {
+        setContacts(cached);
         if (selectedUser) {
-          const updatedUser = data.find(u => u.id === selectedUser.id);
+          const updatedUser = cached.find(u => u.id === selectedUser.id);
           if (updatedUser) setSelectedUser(updatedUser);
         }
-        setServerStatus(isNative ? (navigator.onLine ? 'App Online - Sincronizado' : 'Modo Offline (SQLite)') : 'Conectado al backend');
-        
-        // Si es móvil y tenemos red, disparamos sincronización de SQLite -> PostgreSQL
-        if (isNative && navigator.onLine) {
-          triggerBackgroundSync();
-        }
-      } else {
-        setServerStatus('Error en la API');
       }
-    } catch (error) {
-      console.error('Error al cargar datos:', error);
-      setServerStatus('Modo Offline (SQLite)');
+
+      // 2. Si hay conexión a internet, sincronizar cola de pendientes hacia PostgreSQL
+      if (navigator.onLine) {
+        triggerBackgroundSync();
+      } else {
+        setServerStatus('Modo Offline (App)');
+      }
+    } else {
+      // --- PÁGINA WEB DIRECTA ---
+      try {
+        setServerStatus('Cargando datos...');
+        const response = await fetch(API_URL);
+        if (response.ok) {
+          const data = await response.json();
+          setContacts(data);
+          if (selectedUser) {
+            const updatedUser = data.find(u => u.id === selectedUser.id);
+            if (updatedUser) setSelectedUser(updatedUser);
+          }
+          setServerStatus('Conectado a PostgreSQL');
+        } else {
+          setServerStatus('Error en la API');
+        }
+      } catch (error) {
+        console.error('Error al conectar con backend:', error);
+        setServerStatus('Error de conexión');
+      }
     }
   };
 
@@ -145,25 +161,57 @@ function App() {
     if (!navigator.onLine) return;
     
     try {
-      setServerStatus('Sincronizando SQLite -> PostgreSQL...');
-      const syncUrl = `${API_URL}sync/`;
-      const res = await fetch(syncUrl, { method: 'POST' });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.registros_sincronizados > 0) {
-          addToast(`¡Sincronizados ${result.registros_sincronizados} registro(s) a PostgreSQL!`, 'success');
+      setServerStatus('Sincronizando con PostgreSQL...');
+      
+      // 1. Enviar operaciones pendientes acumuladas offline
+      const pending = await getPendingSync();
+      if (pending.length > 0) {
+        for (const op of pending) {
+          try {
+            if (op.type === 'CREATE') {
+              const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+              await fetch(API_URL, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(dataToSend) 
+              });
+            } else if (op.type === 'UPDATE') {
+              if (typeof op.data.id !== 'string' || !op.data.id.startsWith('temp_')) {
+                const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
+                await fetch(`${API_URL}${op.data.id}/`, { 
+                  method: 'PATCH', 
+                  headers: { 'Content-Type': 'application/json' }, 
+                  body: JSON.stringify(dataToSend) 
+                });
+              }
+            } else if (op.type === 'DELETE') {
+              if (typeof op.id !== 'string' || !op.id.startsWith('temp_')) {
+                await fetch(`${API_URL}${op.id}/`, { method: 'DELETE' });
+              }
+            }
+          } catch (e) {
+            console.error("Error al procesar operación pendiente", e);
+          }
         }
-        // Recargar datos actualizados con los IDs oficiales
-        const response = await fetch(API_URL);
-        if (response.ok) {
-          const freshData = await response.json();
-          setContacts(freshData);
+        await clearPendingSync();
+        addToast('Sincronización completa con PostgreSQL', 'success');
+      }
+      
+      // 2. Descargar última información fresca de PostgreSQL
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const freshData = await response.json();
+        await cacheContacts(freshData);
+        setContacts(freshData);
+        if (selectedUser) {
+          const updatedUser = freshData.find(u => u.id === selectedUser.id);
+          if (updatedUser) setSelectedUser(updatedUser);
         }
         setServerStatus('App Online - Sincronizado');
       }
     } catch (error) {
-      console.log('Error al sincronizar con PostgreSQL:', error);
-      setServerStatus('Modo Offline (SQLite)');
+      console.log('Error de red en sincronización:', error);
+      setServerStatus('Modo Offline (App)');
     }
   };
 
@@ -176,41 +224,90 @@ function App() {
     e.preventDefault();
     if (!formData.names || !formData.email || !formData.phone) return;
 
-    try {
-      let response;
-      if (editingId) {
-        response = await fetch(`${API_URL}${editingId}/`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        });
-      } else {
-        response = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        });
-      }
+    if (isNative) {
+      // --- APP MÓVIL EMPAQUETADA ---
+      if (navigator.onLine) {
+        // ONLINE: Guardar directo a PostgreSQL y actualizar caché local
+        try {
+          let response;
+          if (editingId) {
+            response = await fetch(`${API_URL}${editingId}/`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(formData)
+            });
+          } else {
+            response = await fetch(API_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(formData)
+            });
+          }
 
-      if (response.ok) {
-        const resData = await response.json();
-        const msg = isNative ? 
-          (resData.status?.includes('offline') ? '¡Guardado en SQLite (Offline)!' : '¡Guardado y Sincronizado!') :
-          (editingId ? '¡Registro actualizado en PostgreSQL!' : '¡Registro guardado en PostgreSQL!');
-        
-        addToast(msg, 'success');
+          if (response.ok) {
+            addToast(editingId ? '¡Actualizado en PostgreSQL!' : '¡Guardado en PostgreSQL!', 'success');
+            setEditingId(null);
+            setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+            triggerBackgroundSync();
+          } else {
+            addToast('Error al guardar en el servidor', 'error');
+          }
+        } catch (err) {
+          // Si falla la red durante la petición, cae al flujo offline
+          const operation = editingId ? 
+            { type: 'UPDATE', data: { id: editingId, ...formData } } : 
+            { type: 'CREATE', data: { ...formData } };
+            
+          await addPendingOperation(operation);
+          const cached = await getCachedContacts();
+          setContacts(cached);
+          addToast('Guardado localmente (Offline)', 'info');
+          setEditingId(null);
+          setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+        }
+      } else {
+        // OFFLINE: Guardar localmente en la app
+        const operation = editingId ? 
+          { type: 'UPDATE', data: { id: editingId, ...formData } } : 
+          { type: 'CREATE', data: { ...formData } };
+          
+        await addPendingOperation(operation);
+        const cached = await getCachedContacts();
+        setContacts(cached);
+        addToast('Guardado localmente en la App (Offline)', 'info');
         setEditingId(null);
         setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
-        
-        loadData();
-      } else {
-        const errData = await response.json();
-        addToast('Error al procesar el registro.', 'error');
-        console.error(errData);
       }
-    } catch (error) {
-      console.error('Error en handleSubmit:', error);
-      addToast('Error de conexión con el servidor/API.', 'error');
+    } else {
+      // --- PÁGINA WEB ---
+      try {
+        let response;
+        if (editingId) {
+          response = await fetch(`${API_URL}${editingId}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+        } else {
+          response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+        }
+
+        if (response.ok) {
+          addToast(editingId ? '¡Registro actualizado en PostgreSQL!' : '¡Registro guardado en PostgreSQL!', 'success');
+          setEditingId(null);
+          setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+          loadData();
+        } else {
+          addToast('Error al procesar el registro en el servidor.', 'error');
+        }
+      } catch (error) {
+        console.error('Error en handleSubmit:', error);
+        addToast('Error de conexión con el servidor backend.', 'error');
+      }
     }
   };
 
@@ -224,26 +321,45 @@ function App() {
   const handleDelete = async (id, e) => {
     if (e) e.stopPropagation();
     
-    try {
-      const response = await fetch(`${API_URL}${id}/`, {
-        method: 'DELETE'
-      });
-      if (response.ok || response.status === 204) {
-        addToast('Registro eliminado', 'info');
-        if (editingId === id) {
-          setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
-          setEditingId(null);
+    if (isNative) {
+      if (navigator.onLine) {
+        try {
+          const response = await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
+          if (response.ok || response.status === 204) {
+            addToast('Registro eliminado de PostgreSQL', 'info');
+            if (editingId === id) setEditingId(null);
+            if (selectedUser && selectedUser.id === id) setSelectedUser(null);
+            triggerBackgroundSync();
+          }
+        } catch (err) {
+          await addPendingOperation({ type: 'DELETE', id });
+          const cached = await getCachedContacts();
+          setContacts(cached);
+          addToast('Eliminado localmente (Offline)', 'info');
         }
-        if (selectedUser && selectedUser.id === id) {
-          setSelectedUser(null);
-        }
-        loadData();
       } else {
-        addToast('Error al eliminar el registro', 'error');
+        await addPendingOperation({ type: 'DELETE', id });
+        const cached = await getCachedContacts();
+        setContacts(cached);
+        addToast('Eliminado localmente (Offline)', 'info');
+        if (editingId === id) setEditingId(null);
+        if (selectedUser && selectedUser.id === id) setSelectedUser(null);
       }
-    } catch (error) {
-      console.error('Error al eliminar:', error);
-      addToast('No se pudo conectar con el servidor para eliminar.', 'error');
+    } else {
+      try {
+        const response = await fetch(`${API_URL}${id}/`, { method: 'DELETE' });
+        if (response.ok || response.status === 204) {
+          addToast('Registro eliminado', 'info');
+          if (editingId === id) setEditingId(null);
+          if (selectedUser && selectedUser.id === id) setSelectedUser(null);
+          loadData();
+        } else {
+          addToast('Error al eliminar el registro', 'error');
+        }
+      } catch (error) {
+        console.error('Error al eliminar:', error);
+        addToast('No se pudo conectar con el servidor para eliminar.', 'error');
+      }
     }
   };
 

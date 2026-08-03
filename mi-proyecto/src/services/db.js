@@ -1,37 +1,116 @@
 import localforage from 'localforage';
+import initSqlJs from 'sql.js';
 
-// Inicializar la tienda de IndexedDB
+let dbInstance = null;
+
+// Configurar localforage para persistir el archivo binario de la base de datos SQLite (.sqlite)
 localforage.config({
   name: 'mi_proyecto_db',
-  storeName: 'contactos'
+  storeName: 'sqlite_store'
 });
 
 /**
- * Obtener todos los contactos cacheados
+ * Inicializar / obtener la instancia de la base de datos SQLite (SQL.js)
+ */
+export const getSQLiteDB = async () => {
+  if (dbInstance) return dbInstance;
+
+  try {
+    const SQL = await initSqlJs({
+      locateFile: file => `https://sql.js.org/dist/${file}`
+    });
+
+    const savedDbArray = await localforage.getItem('sqlite_db_file');
+    if (savedDbArray) {
+      dbInstance = new SQL.Database(new Uint8Array(savedDbArray));
+    } else {
+      dbInstance = new SQL.Database();
+      // Crear tabla contactos en SQLite
+      dbInstance.run(`
+        CREATE TABLE IF NOT EXISTS contactos (
+          id TEXT PRIMARY KEY,
+          tipo_documento TEXT,
+          numero_documento TEXT,
+          nombres TEXT,
+          correo TEXT,
+          telefono TEXT,
+          is_synced INTEGER
+        );
+      `);
+      await saveSQLiteFile();
+    }
+  } catch (error) {
+    console.error("Error al inicializar SQLite:", error);
+  }
+  return dbInstance;
+};
+
+/**
+ * Guardar binario de SQLite en almacenamiento persistente
+ */
+const saveSQLiteFile = async () => {
+  if (dbInstance) {
+    const data = dbInstance.export();
+    await localforage.setItem('sqlite_db_file', Array.from(data));
+  }
+};
+
+/**
+ * Obtener todos los contactos cacheados desde SQLite
  */
 export const getCachedContacts = async () => {
   try {
-    const data = await localforage.getItem('contacts_list');
-    return data || [];
+    const db = await getSQLiteDB();
+    if (!db) return [];
+    
+    const stmt = db.prepare("SELECT * FROM contactos");
+    const result = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      result.push({
+        ...row,
+        is_synced: Boolean(row.is_synced)
+      });
+    }
+    stmt.free();
+    return result;
   } catch (error) {
-    console.error("Error al obtener contactos locales:", error);
+    console.error("Error al obtener contactos desde SQLite:", error);
     return [];
   }
 };
 
 /**
- * Guardar toda la lista de contactos en caché (usado cuando hay internet)
+ * Sincronizar toda la lista de contactos hacia la tabla SQLite local
  */
 export const cacheContacts = async (contacts) => {
   try {
-    await localforage.setItem('contacts_list', contacts);
+    const db = await getSQLiteDB();
+    if (!db) return;
+
+    db.run("DELETE FROM contactos");
+    const stmt = db.prepare("INSERT INTO contactos (id, tipo_documento, numero_documento, nombres, correo, telefono, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    
+    for (const c of contacts) {
+      stmt.run([
+        c.id ? String(c.id) : `temp_${Date.now()}_${Math.random()}`,
+        c.documentType || c.tipo_documento || 'DNI',
+        c.documentNumber || c.numero_documento || '',
+        c.names || c.nombres || '',
+        c.email || c.correo || '',
+        c.phone || c.telefono || '',
+        c.is_synced ? 1 : 0
+      ]);
+    }
+    stmt.free();
+    await saveSQLiteFile();
   } catch (error) {
-    console.error("Error al cachear contactos:", error);
+    console.error("Error al guardar contactos en SQLite:", error);
   }
 };
 
 /**
- * Obtener la cola de operaciones pendientes (creaciones y actualizaciones offline)
+ * Obtener operaciones pendientes almacenadas
  */
 export const getPendingSync = async () => {
   try {
@@ -44,13 +123,12 @@ export const getPendingSync = async () => {
 };
 
 /**
- * Añadir una operación a la cola de pendientes y actualizar la caché local para que la UI lo refleje
+ * Añadir operación a la cola y persistir cambio en la tabla SQLite
  */
 export const addPendingOperation = async (operation) => {
   try {
     const queue = await getPendingSync();
     
-    // Asignar un ID temporal para que la UI pueda renderizarlo si es creación
     if (operation.type === 'CREATE' && !operation.data.id) {
       operation.data.id = 'temp_' + Date.now();
     }
@@ -58,25 +136,42 @@ export const addPendingOperation = async (operation) => {
     queue.push(operation);
     await localforage.setItem('pending_sync', queue);
 
-    // Actualizar la lista en caché visualmente
-    let contacts = await getCachedContacts();
-    if (operation.type === 'CREATE') {
-      // Marcar visualmente como offline
-      operation.data.is_synced = false;
-      contacts.push(operation.data);
-    } else if (operation.type === 'UPDATE') {
-      const idx = contacts.findIndex(c => c.id === operation.data.id);
-      if (idx !== -1) {
-        contacts[idx] = { ...contacts[idx], ...operation.data, is_synced: false };
+    const db = await getSQLiteDB();
+    if (db) {
+      if (operation.type === 'CREATE') {
+        const stmt = db.prepare("INSERT INTO contactos (id, tipo_documento, numero_documento, nombres, correo, telefono, is_synced) VALUES (?, ?, ?, ?, ?, ?, 0)");
+        stmt.run([
+          String(operation.data.id),
+          operation.data.documentType || 'DNI',
+          operation.data.documentNumber || '',
+          operation.data.names || '',
+          operation.data.email || '',
+          operation.data.phone || '',
+          0
+        ]);
+        stmt.free();
+      } else if (operation.type === 'UPDATE') {
+        const stmt = db.prepare("UPDATE contactos SET tipo_documento=?, numero_documento=?, nombres=?, correo=?, telefono=?, is_synced=0 WHERE id=?");
+        stmt.run([
+          operation.data.documentType || 'DNI',
+          operation.data.documentNumber || '',
+          operation.data.names || '',
+          operation.data.email || '',
+          operation.data.phone || '',
+          String(operation.data.id)
+        ]);
+        stmt.free();
+      } else if (operation.type === 'DELETE') {
+        const stmt = db.prepare("DELETE FROM contactos WHERE id=?");
+        stmt.run([String(operation.id)]);
+        stmt.free();
       }
-    } else if (operation.type === 'DELETE') {
-      contacts = contacts.filter(c => c.id !== operation.id);
+      await saveSQLiteFile();
     }
-    await cacheContacts(contacts);
     
     return operation.data;
   } catch (error) {
-    console.error("Error al encolar operación offline:", error);
+    console.error("Error al añadir operación offline en SQLite:", error);
   }
 };
 
