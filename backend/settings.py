@@ -55,8 +55,6 @@ CHANNEL_LAYERS = {
 
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -71,7 +69,9 @@ CORS_ALLOWED_ORIGINS = [
     'http://app.adsoproject.dev',
     'https://app.adsoproject.dev',
     'http://localhost:8000',
-    'http://localhost'
+    'http://localhost',
+    'https://appapi.adsoproject.dev'
+
 ]
 
 ROOT_URLCONF = 'backend.urls'
