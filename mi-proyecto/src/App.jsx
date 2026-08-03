@@ -100,19 +100,28 @@ function App() {
   };
 
   const loadData = async () => {
-    // 1. Mostrar caché INMEDIATAMENTE (Cero esperas)
-    const cached = await getCachedContacts();
-    if (cached.length > 0) {
-      setContacts(cached);
-      if (selectedUser) {
-        const updatedUser = cached.find(u => u.id === selectedUser.id);
-        if (updatedUser) setSelectedUser(updatedUser);
+    try {
+      setServerStatus(isNative ? 'Cargando datos locales (SQLite)...' : 'Cargando datos de servidor...');
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        setContacts(data);
+        if (selectedUser) {
+          const updatedUser = data.find(u => u.id === selectedUser.id);
+          if (updatedUser) setSelectedUser(updatedUser);
+        }
+        setServerStatus(isNative ? (navigator.onLine ? 'App Online - Sincronizado' : 'Modo Offline (SQLite)') : 'Conectado al backend');
+        
+        // Si es móvil y tenemos red, disparamos sincronización de SQLite -> PostgreSQL
+        if (isNative && navigator.onLine) {
+          triggerBackgroundSync();
+        }
+      } else {
+        setServerStatus('Error en la API');
       }
-    }
-    
-    // 2. Disparar actualización invisible
-    if (navigator.onLine) {
-      triggerBackgroundSync();
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+      setServerStatus('Modo Offline (SQLite)');
     }
   };
 
@@ -120,49 +129,25 @@ function App() {
     if (!navigator.onLine) return;
     
     try {
-      setServerStatus('Sincronizando...');
-      
-      // 1. Push pending
-      const pending = await getPendingSync();
-      if (pending.length > 0) {
-        for (const op of pending) {
-          try {
-            if (op.type === 'CREATE') {
-              const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
-              await fetch(API_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
-            } else if (op.type === 'UPDATE') {
-              if (typeof op.data.id !== 'string' || !op.data.id.startsWith('temp_')) {
-                const { id, is_synced, phones_list, phone_display, ...dataToSend } = op.data;
-                await fetch(`${API_URL}${op.data.id}/`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dataToSend) });
-              }
-            } else if (op.type === 'DELETE') {
-              if (typeof op.id !== 'string' || !op.id.startsWith('temp_')) {
-                await fetch(`${API_URL}${op.id}/`, { method: 'DELETE' });
-              }
-            }
-          } catch (e) {
-            console.error("Fallo operación individual", e);
-          }
+      setServerStatus('Sincronizando SQLite -> PostgreSQL...');
+      const syncUrl = `${API_URL}sync/`;
+      const res = await fetch(syncUrl, { method: 'POST' });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.registros_sincronizados > 0) {
+          addToast(`¡Sincronizados ${result.registros_sincronizados} registro(s) a PostgreSQL!`, 'success');
         }
-        await clearPendingSync();
-      }
-      
-      // 2. Fetch fresh data
-      const response = await fetch(API_URL);
-      if (response.ok) {
-        let serverData = await response.json();
-        await cacheContacts(serverData);
-        setContacts(serverData);
-        
-        if (selectedUser) {
-          const updatedUser = serverData.find(u => u.id === selectedUser.id);
-          if (updatedUser) setSelectedUser(updatedUser);
+        // Recargar datos actualizados con los IDs oficiales
+        const response = await fetch(API_URL);
+        if (response.ok) {
+          const freshData = await response.json();
+          setContacts(freshData);
         }
-        setServerStatus('Online - Sincronizado');
+        setServerStatus('App Online - Sincronizado');
       }
     } catch (error) {
-      console.log('Error de red en background', error);
-      setServerStatus('Offline (Modo Local)');
+      console.log('Error al sincronizar con PostgreSQL:', error);
+      setServerStatus('Modo Offline (SQLite)');
     }
   };
 
@@ -175,24 +160,42 @@ function App() {
     e.preventDefault();
     if (!formData.names || !formData.email || !formData.phone) return;
 
-    // OFFLINE-FIRST: Guardar en memoria local instantáneamente y no hacer esperar al UI
-    const operation = editingId ? 
-      { type: 'UPDATE', data: { id: editingId, ...formData } } : 
-      { type: 'CREATE', data: { ...formData } };
-      
-    await addPendingOperation(operation);
-    
-    // Leer el caché actualizado para mostrarlo en 1ms
-    const cached = await getCachedContacts();
-    setContacts(cached);
-    
-    addToast(editingId ? '¡Registro actualizado!' : '¡Registro guardado!', 'success');
-    
-    setEditingId(null);
-    setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
-    
-    // Intentar sincronizar al servidor de forma totalmente asíncrona
-    triggerBackgroundSync();
+    try {
+      let response;
+      if (editingId) {
+        response = await fetch(`${API_URL}${editingId}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+      } else {
+        response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+      }
+
+      if (response.ok) {
+        const resData = await response.json();
+        const msg = isNative ? 
+          (resData.status?.includes('offline') ? '¡Guardado en SQLite (Offline)!' : '¡Guardado y Sincronizado!') :
+          (editingId ? '¡Registro actualizado en PostgreSQL!' : '¡Registro guardado en PostgreSQL!');
+        
+        addToast(msg, 'success');
+        setEditingId(null);
+        setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+        
+        loadData();
+      } else {
+        const errData = await response.json();
+        addToast('Error al procesar el registro.', 'error');
+        console.error(errData);
+      }
+    } catch (error) {
+      console.error('Error en handleSubmit:', error);
+      addToast('Error de conexión con el servidor/API.', 'error');
+    }
   };
 
   const handleEdit = (contact, e) => {
@@ -205,23 +208,27 @@ function App() {
   const handleDelete = async (id, e) => {
     if (e) e.stopPropagation();
     
-    // OFFLINE-FIRST: Eliminar localmente de forma instantánea
-    await addPendingOperation({ type: 'DELETE', id });
-    const cached = await getCachedContacts();
-    setContacts(cached);
-    
-    addToast('Registro eliminado', 'info');
-    
-    if (editingId === id) {
-      setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
-      setEditingId(null);
+    try {
+      const response = await fetch(`${API_URL}${id}/`, {
+        method: 'DELETE'
+      });
+      if (response.ok || response.status === 204) {
+        addToast('Registro eliminado', 'info');
+        if (editingId === id) {
+          setFormData({ documentType: 'DNI', documentNumber: '', names: '', email: '', phone: '' });
+          setEditingId(null);
+        }
+        if (selectedUser && selectedUser.id === id) {
+          setSelectedUser(null);
+        }
+        loadData();
+      } else {
+        addToast('Error al eliminar el registro', 'error');
+      }
+    } catch (error) {
+      console.error('Error al eliminar:', error);
+      addToast('No se pudo conectar con el servidor para eliminar.', 'error');
     }
-    if (selectedUser && selectedUser.id === id) {
-      setSelectedUser(null);
-    }
-    
-    // Intentar propagar a la nube asíncronamente
-    triggerBackgroundSync();
   };
 
   const handleSync = async () => {
@@ -232,7 +239,6 @@ function App() {
     
     setServerStatus('Forzando sincronización...');
     await triggerBackgroundSync();
-    addToast('Sincronización completa.', 'success');
   };
 
   return (
