@@ -66,8 +66,8 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    'http://app.adsoproject.dev/',
-    'https://app.adsoproject.dev/'
+    'http://app.adsoproject.dev',
+    'https://app.adsoproject.dev'
 ]
 
 ROOT_URLCONF = 'backend.urls'
