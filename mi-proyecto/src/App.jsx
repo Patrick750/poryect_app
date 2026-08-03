@@ -5,15 +5,31 @@ import UserDetail from './components/UserDetail';
 import { getCachedContacts, cacheContacts, getPendingSync, addPendingOperation, clearPendingSync } from './services/db';
 import './index.css';
 
-// Usamos la variable de entorno o caemos en localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/personas/';
+// Normalizar API_URL asegurando que termine con '/api/personas/' o la ruta correcta del endpoint
+const getNormalizedApiUrl = () => {
+  let rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/personas/';
+  if (!rawUrl.endsWith('/')) {
+    rawUrl += '/';
+  }
+  if (!rawUrl.includes('/api/personas/')) {
+    rawUrl = `${rawUrl}api/personas/`;
+  }
+  return rawUrl;
+};
+
+const API_URL = getNormalizedApiUrl();
 const isNative = Capacitor.isNativePlatform();
 
 // Derivar URL de WebSocket desde API_URL
 const getWsUrl = () => {
-  const url = new URL(API_URL);
-  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${url.host}/ws/personas/`;
+  try {
+    const url = new URL(API_URL);
+    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${url.host}/ws/personas/`;
+  } catch (e) {
+    console.error("URL de WebSocket no válida", e);
+    return null;
+  }
 };
 
 function App() {
