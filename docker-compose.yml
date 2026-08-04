@@ -39,7 +39,7 @@ services:
       - app
     restart: always
 
-  db:
+  db_appweb:
     image: postgres:15-alpine
     container_name: db_app-nube
     restart: always
@@ -62,4 +62,4 @@ networks:
     name: proxy-network
 
 volumes: 
-  app:
+  db_appweb:
