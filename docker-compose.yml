@@ -15,6 +15,8 @@ services:
           memory: 512M
     networks:
       - app
+    depends_on:
+      - db_appweb
     env_file:
       - .env
     restart: always
@@ -50,7 +52,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
-      - app:/var/lib/postgresql/data
+      - appweb_data:/var/lib/postgresql/data
     networks:
       - app
     env_file:
@@ -62,4 +64,4 @@ networks:
     name: proxy-network
 
 volumes: 
-  db_appweb:
+  appweb_data:
